@@ -128,6 +128,44 @@ async function getOfficialLogoPngBytes() {
   return cachedLogoPngBytes;
 }
 
+function getVitalsRows(vitals) {
+  return [
+    { label: "BP", value: valueOrDash(vitals?.bloodPressure) },
+    { label: "Pulse", value: valueOrDash(vitals?.pulse) },
+    { label: "SpO2", value: valueOrDash(vitals?.spo2) },
+    { label: "Weight", value: valueOrDash(vitals?.weight) },
+  ];
+}
+
+function drawVitalsColumn(page, labelFont, valueFont, vitals) {
+  const cfg = TEMPLATE_POS.vitalsColumn;
+  if (!cfg) return;
+
+  if (cfg.heading) {
+    drawLine(page, labelFont, String(cfg.heading).toUpperCase(), cfg.x, cfg.yTop - 12, cfg.headingSize || 11);
+  }
+
+  const rows = getVitalsRows(vitals);
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const yTop = cfg.yTop + index * cfg.rowGap;
+    drawLine(page, labelFont, `${row.label}:`, cfg.x, yTop, cfg.labelSize);
+    drawFittedLine(
+      page,
+      valueFont,
+      row.value,
+      {
+        x: cfg.x + cfg.labelWidth,
+        yTop,
+        size: cfg.valueSize,
+        minSize: cfg.valueMinSize,
+        maxWidth: Math.max(30, cfg.width - cfg.labelWidth),
+      },
+      { blankIfEmpty: false }
+    );
+  }
+}
+
 export async function generatePrescriptionPdfFromTemplate({
   doctor,
   patient,
@@ -196,6 +234,7 @@ export async function generatePrescriptionPdfFromTemplate({
   drawFittedLine(page, boldFont, patient?.age, TEMPLATE_POS.age, {
     blankIfEmpty: true,
   });
+  drawVitalsColumn(page, regularFont, boldFont, vitals);
 
   const blocks = buildPrescriptionBlocks({ patient, vitals, diagnosis, advice, medicines });
   const bodyLayout = composePrescriptionBodyLayout({
@@ -209,12 +248,6 @@ export async function generatePrescriptionPdfFromTemplate({
     gridCellPaddingY: TEMPLATE_POS.medicineGrid.cellPaddingY,
     gridMinRowHeight: TEMPLATE_POS.medicineGrid.minRowHeight,
   });
-
-  if (bodyLayout.vitals?.length) {
-    for (const line of bodyLayout.vitals) {
-      drawLine(page, regularFont, line.text, TEMPLATE_POS.bodyArea.x, line.yTop, line.size);
-    }
-  }
 
   if (bodyLayout.diagnosis.headingY != null) {
     drawLine(

@@ -155,16 +155,7 @@ export function normalizeMedicineGridRows(medicines) {
 }
 
 export function buildPrescriptionBlocks({ patient, vitals, diagnosis, advice, medicines }) {
-  const vitalsParts = [];
-  const weight = sanitizeInlineText(vitals?.weight);
-  const bloodPressure = sanitizeInlineText(vitals?.bloodPressure);
-  const bloodSugar = sanitizeInlineText(vitals?.bloodSugar);
-  if (weight) vitalsParts.push(`Wt ${weight}`);
-  if (bloodPressure) vitalsParts.push(`BP ${bloodPressure}`);
-  if (bloodSugar) vitalsParts.push(`Sugar ${bloodSugar}`);
-
   return {
-    vitalsLine: vitalsParts.length ? `Vitals: ${vitalsParts.join(" | ")}` : "",
     diagnosisParagraphs: splitClinicalParagraphs(diagnosis),
     adviceParagraphs: splitClinicalParagraphs(advice),
     medicineRows: normalizeMedicineGridRows(medicines),
@@ -227,7 +218,6 @@ function buildBodyLayoutAtSize({
     tableHeaderSize,
     tableTextSize,
     tableLineHeight,
-    vitals: null,
     diagnosis: { headingY: null, lines: [] },
     medicines: { headingY: null, columns: [], headerY: null, rows: [], bottomY: null },
     advice: { headingY: null, lines: [] },
@@ -267,20 +257,6 @@ function buildBodyLayoutAtSize({
     target.heading = label;
     y += headingHeight;
     return true;
-  }
-
-  if (blocks.vitalsLine) {
-    const vitalsLines = wrapTextByWidth(blocks.vitalsLine, area.width, (value) =>
-      measureAtSize(value, textSize)
-    );
-    const rendered = [];
-    for (const line of vitalsLines) {
-      if (!addTextLine(rendered, line, textSize, area.width)) break;
-    }
-    if (rendered.length) {
-      layout.vitals = rendered;
-      y += sectionGap;
-    }
   }
 
   if (blocks.diagnosisParagraphs.length) {
@@ -438,11 +414,13 @@ function buildVitalsLine(vitals) {
   const chunks = [];
   const weight = String(vitals?.weight || "").trim();
   const bloodPressure = String(vitals?.bloodPressure || "").trim();
-  const bloodSugar = String(vitals?.bloodSugar || "").trim();
+  const pulse = String(vitals?.pulse || "").trim();
+  const spo2 = String(vitals?.spo2 || "").trim();
 
-  if (weight) chunks.push(`Wt ${weight}`);
   if (bloodPressure) chunks.push(`BP ${bloodPressure}`);
-  if (bloodSugar) chunks.push(`Sugar ${bloodSugar}`);
+  if (pulse) chunks.push(`Pulse ${pulse}`);
+  if (spo2) chunks.push(`SpO2 ${spo2}`);
+  if (weight) chunks.push(`Wt ${weight}`);
   if (!chunks.length) return "";
   return `Vitals: ${chunks.join(" | ")}`;
 }

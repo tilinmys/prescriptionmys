@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { supabase } from "../../lib/supabaseClient";
+import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
 
 const SUPABASE_ORIGIN = (() => {
   try {
@@ -69,6 +69,14 @@ export default function PrescriptionView() {
   const [items, setItems] = useState([]);
   const [pdfUrl, setPdfUrl] = useState("");
 
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="p-6 bg-white rounded-xl shadow-sm">
+        Frontend-only mode: database view is disabled.
+      </div>
+    );
+  }
+
   const loadPrescription = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
@@ -80,7 +88,7 @@ export default function PrescriptionView() {
         const response = await supabase
           .from("prescriptions")
           .select(
-            "id,doctor_id,patient_id,diagnosis,advice,notes,status,pdf_path,created_at,weight,blood_pressure,blood_sugar"
+            "id,doctor_id,patient_id,diagnosis,advice,notes,status,pdf_path,created_at,weight,blood_pressure,pulse,spo2,blood_sugar"
           )
           .eq("id", id)
           .single();
@@ -91,6 +99,8 @@ export default function PrescriptionView() {
         prescriptionError &&
         (isMissingColumnError(prescriptionError, "weight") ||
           isMissingColumnError(prescriptionError, "blood_pressure") ||
+          isMissingColumnError(prescriptionError, "pulse") ||
+          isMissingColumnError(prescriptionError, "spo2") ||
           isMissingColumnError(prescriptionError, "blood_sugar"))
       ) {
         const fallbackResponse = await supabase
@@ -297,19 +307,27 @@ export default function PrescriptionView() {
           </p>
         </div>
         <div className="rounded-lg border border-slate-200 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Weight</p>
-          <p className="mt-1 text-sm font-medium text-slate-900">{prescription.weight || "-"}</p>
-        </div>
-        <div className="rounded-lg border border-slate-200 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blood Pressure</p>
           <p className="mt-1 text-sm font-medium text-slate-900">
             {prescription.blood_pressure || "-"}
           </p>
         </div>
         <div className="rounded-lg border border-slate-200 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blood Sugar</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pulse</p>
           <p className="mt-1 text-sm font-medium text-slate-900">
-            {prescription.blood_sugar || "-"}
+            {prescription.pulse || "-"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">SpO2</p>
+          <p className="mt-1 text-sm font-medium text-slate-900">
+            {prescription.spo2 || prescription.blood_sugar || "-"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Weight</p>
+          <p className="mt-1 text-sm font-medium text-slate-900">
+            {prescription.weight || "-"}
           </p>
         </div>
       </div>

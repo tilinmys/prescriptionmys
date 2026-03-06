@@ -1,0 +1,11 @@
+services:
+  - type: static_site
+    name: prescriptionmys
+    env: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

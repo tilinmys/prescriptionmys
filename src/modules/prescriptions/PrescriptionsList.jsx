@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../lib/supabaseClient";
+import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -28,6 +28,12 @@ export default function PrescriptionsList() {
     async function loadRows() {
       setIsLoading(true);
       setErrorMessage("");
+
+      if (!isSupabaseConfigured) {
+        setRows([]);
+        setIsLoading(false);
+        return;
+      }
 
       try {
         const { data: prescriptionRows, error: prescriptionError } = await supabase
@@ -74,6 +80,7 @@ export default function PrescriptionsList() {
 
   const emptyMessage = useMemo(() => {
     if (isLoading) return "Loading prescriptions...";
+    if (!isSupabaseConfigured) return "Frontend-only mode: database list is disabled.";
     if (errorMessage) return errorMessage;
     return "No prescriptions found.";
   }, [isLoading, errorMessage]);

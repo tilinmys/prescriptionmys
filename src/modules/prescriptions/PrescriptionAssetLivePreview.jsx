@@ -33,6 +33,15 @@ function fitPreviewTextSize(text, cfg) {
   return size;
 }
 
+function getVitalsRows(vitals) {
+  return [
+    { key: "bp", label: "BP", value: valueOrDash(vitals?.bloodPressure) },
+    { key: "pulse", label: "Pulse", value: valueOrDash(vitals?.pulse) },
+    { key: "spo2", label: "SpO2", value: valueOrDash(vitals?.spo2) },
+    { key: "weight", label: "Weight", value: valueOrDash(vitals?.weight) },
+  ];
+}
+
 export default function PrescriptionAssetLivePreview({
   doctor,
   patient,
@@ -98,6 +107,7 @@ export default function PrescriptionAssetLivePreview({
     () => fitPreviewTextSize(doctorNameText, TEMPLATE_POS.doctorNameFooter),
     [doctorNameText]
   );
+  const vitalsRows = useMemo(() => getVitalsRows(vitals), [vitals]);
 
   const bodyLayout = useMemo(() => {
     const blocks = buildPrescriptionBlocks({ patient, vitals, diagnosis, advice, medicines });
@@ -228,25 +238,70 @@ export default function PrescriptionAssetLivePreview({
           {ageText}
         </div>
 
-        {bodyLayout.vitals?.map((line, index) => (
+        {vitalsRows.map((row, index) => {
+          const yTop = TEMPLATE_POS.vitalsColumn.yTop + index * TEMPLATE_POS.vitalsColumn.rowGap;
+          const valueSize = fitPreviewTextSize(row.value, {
+            size: TEMPLATE_POS.vitalsColumn.valueSize,
+            minSize: TEMPLATE_POS.vitalsColumn.valueMinSize,
+            maxWidth: TEMPLATE_POS.vitalsColumn.width - TEMPLATE_POS.vitalsColumn.labelWidth,
+          });
+
+          return (
+            <div key={row.key}>
+              <div
+                className="absolute"
+                style={{
+                  left: `${TEMPLATE_POS.vitalsColumn.x * previewScale}px`,
+                  top: `${yTop * previewScale}px`,
+                  width: `${TEMPLATE_POS.vitalsColumn.labelWidth * previewScale}px`,
+                  fontSize: `${TEMPLATE_POS.vitalsColumn.labelSize * previewScale}px`,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  fontFamily: "Arial, sans-serif",
+                  fontWeight: 600,
+                  color: "#334155",
+                }}
+              >
+                {row.label}:
+              </div>
+              <div
+                className="absolute"
+                style={{
+                  left: `${(TEMPLATE_POS.vitalsColumn.x + TEMPLATE_POS.vitalsColumn.labelWidth) * previewScale}px`,
+                  top: `${yTop * previewScale}px`,
+                  width: `${
+                    (TEMPLATE_POS.vitalsColumn.width - TEMPLATE_POS.vitalsColumn.labelWidth) *
+                    previewScale
+                  }px`,
+                  fontSize: `${valueSize * previewScale}px`,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  fontFamily: PREVIEW_FONT_FAMILY,
+                  fontWeight: 700,
+                  color: "#1f2937",
+                }}
+              >
+                {row.value}
+              </div>
+            </div>
+          );
+        })}
+
+        {TEMPLATE_POS.vitalsColumn?.heading ? (
           <div
-            key={`vitals-${index}`}
-            className="absolute"
+            className="absolute uppercase tracking-[0.14em]"
             style={{
-              left: `${TEMPLATE_POS.bodyArea.x * previewScale}px`,
-              top: `${line.yTop * previewScale}px`,
-              fontSize: `${line.size * previewScale}px`,
-              maxWidth: `${TEMPLATE_POS.bodyArea.width * previewScale}px`,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              fontFamily: "Arial, sans-serif",
-              fontWeight: 600,
-              color: "#334155",
+              left: `${TEMPLATE_POS.vitalsColumn.x * previewScale}px`,
+              top: `${(TEMPLATE_POS.vitalsColumn.yTop - 12) * previewScale}px`,
+              fontSize: `${(TEMPLATE_POS.vitalsColumn.headingSize || 11) * previewScale}px`,
+              fontFamily: PREVIEW_FONT_FAMILY,
+              fontWeight: 700,
+              color: "#64748b",
             }}
           >
-            {line.text}
+            {TEMPLATE_POS.vitalsColumn.heading}
           </div>
-        ))}
+        ) : null}
 
         {bodyLayout.diagnosis.headingY != null ? (
           <div

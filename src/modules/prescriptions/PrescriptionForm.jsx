@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
 import { useNavigate, useParams } from "react-router-dom";
 import PrescriptionAssetLivePreview from "./PrescriptionAssetLivePreview";
 import { generatePrescriptionPdfFromTemplate } from "./generateTemplatePdf";
@@ -146,7 +146,8 @@ export default function PrescriptionForm() {
   const [vitals, setVitals] = useState({
     weight: "",
     bloodPressure: "",
-    bloodSugar: "",
+    pulse: "",
+    spo2: "",
   });
   const [clinicMeta, setClinicMeta] = useState({
     hours: DEFAULT_CLINIC_HOURS,
@@ -291,6 +292,11 @@ export default function PrescriptionForm() {
   }
 
   async function fetchSignatureFromDoctorProfile(doctorName, { silent = false } = {}) {
+    if (!isSupabaseConfigured) {
+      if (!silent) setSignatureStatus("Frontend-only mode: auto signature fetch is disabled.");
+      return "";
+    }
+
     const normalizedName = doctorName?.trim();
     if (!normalizedName) {
       setAutoSignatureSource("");
@@ -498,11 +504,25 @@ export default function PrescriptionForm() {
       advice: toCleanText(advice),
       weight: toCleanText(vitals.weight),
       blood_pressure: toCleanText(vitals.bloodPressure),
-      blood_sugar: toCleanText(vitals.bloodSugar),
+      pulse: toCleanText(vitals.pulse),
+      spo2: toCleanText(vitals.spo2),
+      // Backward-compatible fallback for older schemas that still have blood_sugar.
+      blood_sugar: toCleanText(vitals.spo2),
+      status,
+    };
+    const fallbackPayload = {
+      doctor_id: doctorId,
+      patient_id: patientId,
+      diagnosis: toCleanText(diagnosis),
+      advice: toCleanText(advice),
+      weight: toCleanText(vitals.weight),
+      blood_pressure: toCleanText(vitals.bloodPressure),
+      blood_sugar: toCleanText(vitals.spo2),
       status,
     };
     if (pdfPath !== undefined) {
       primaryPayload.pdf_path = pdfPath;
+      fallbackPayload.pdf_path = pdfPath;
     }
 
     const legacyPayload = {
@@ -520,6 +540,33 @@ export default function PrescriptionForm() {
         .eq("id", prescriptionId);
 
       if (error) {
+        const retryWithoutModernVitalsColumns =
+          isMissingColumnError(error, "pulse") || isMissingColumnError(error, "spo2");
+        if (retryWithoutModernVitalsColumns) {
+          const { error: fallbackError } = await supabase
+            .from("prescriptions")
+            .update(fallbackPayload)
+            .eq("id", prescriptionId);
+          if (!fallbackError) return prescriptionId;
+          const fallbackNeedsLegacy =
+            isMissingColumnError(fallbackError, "advice") ||
+            isMissingColumnError(fallbackError, "status") ||
+            isMissingColumnError(fallbackError, "pdf_path") ||
+            isMissingColumnError(fallbackError, "weight") ||
+            isMissingColumnError(fallbackError, "blood_pressure") ||
+            isMissingColumnError(fallbackError, "blood_sugar");
+          if (!fallbackNeedsLegacy) {
+            throw fallbackError;
+          }
+
+          const { error: legacyError } = await supabase
+            .from("prescriptions")
+            .update(legacyPayload)
+            .eq("id", prescriptionId);
+          if (legacyError) throw legacyError;
+          return prescriptionId;
+        }
+
         const retryWithLegacy =
           isMissingColumnError(error, "advice") ||
           isMissingColumnError(error, "status") ||
@@ -546,6 +593,42 @@ export default function PrescriptionForm() {
       .single();
 
     if (error) {
+      const retryWithoutModernVitalsColumns =
+        isMissingColumnError(error, "pulse") || isMissingColumnError(error, "spo2");
+      if (retryWithoutModernVitalsColumns) {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("prescriptions")
+          .insert(fallbackPayload)
+          .select("id")
+          .single();
+        if (!fallbackError) {
+          setPrescriptionId(fallbackData.id);
+          navigate(`/admin/prescriptions/edit/${fallbackData.id}`, { replace: true });
+          return fallbackData.id;
+        }
+        const fallbackNeedsLegacy =
+          isMissingColumnError(fallbackError, "advice") ||
+          isMissingColumnError(fallbackError, "status") ||
+          isMissingColumnError(fallbackError, "pdf_path") ||
+          isMissingColumnError(fallbackError, "weight") ||
+          isMissingColumnError(fallbackError, "blood_pressure") ||
+          isMissingColumnError(fallbackError, "blood_sugar");
+        if (!fallbackNeedsLegacy) {
+          throw fallbackError;
+        }
+
+        const { data: legacyData, error: legacyError } = await supabase
+          .from("prescriptions")
+          .insert(legacyPayload)
+          .select("id")
+          .single();
+        if (legacyError) throw legacyError;
+
+        setPrescriptionId(legacyData.id);
+        navigate(`/admin/prescriptions/edit/${legacyData.id}`, { replace: true });
+        return legacyData.id;
+      }
+
       const retryWithLegacy =
         isMissingColumnError(error, "advice") ||
         isMissingColumnError(error, "status") ||
@@ -672,7 +755,7 @@ export default function PrescriptionForm() {
         const response = await supabase
           .from("prescriptions")
           .select(
-            "id,doctor_id,patient_id,diagnosis,advice,notes,status,pdf_path,weight,blood_pressure,blood_sugar"
+            "id,doctor_id,patient_id,diagnosis,advice,notes,status,pdf_path,weight,blood_pressure,pulse,spo2,blood_sugar"
           )
           .eq("id", targetId)
           .single();
@@ -684,6 +767,8 @@ export default function PrescriptionForm() {
         prescriptionError &&
         (isMissingColumnError(prescriptionError, "weight") ||
           isMissingColumnError(prescriptionError, "blood_pressure") ||
+          isMissingColumnError(prescriptionError, "pulse") ||
+          isMissingColumnError(prescriptionError, "spo2") ||
           isMissingColumnError(prescriptionError, "blood_sugar"))
       ) {
         const fallbackResponse = await supabase
@@ -727,7 +812,8 @@ export default function PrescriptionForm() {
       setVitals({
         weight: prescriptionRow.weight || "",
         bloodPressure: prescriptionRow.blood_pressure || "",
-        bloodSugar: prescriptionRow.blood_sugar || "",
+        pulse: prescriptionRow.pulse || "",
+        spo2: prescriptionRow.spo2 || prescriptionRow.blood_sugar || "",
       });
       setMedicines(itemRows.length ? itemRows : [createMedicineRow()]);
       setPrescriptionStatus(prescriptionRow.status || "draft");
@@ -740,6 +826,12 @@ export default function PrescriptionForm() {
   }
 
   async function saveDraft() {
+    if (!isSupabaseConfigured) {
+      setPrescriptionStatus("draft");
+      setFormStatus("Frontend-only mode: draft is not saved to database.");
+      return;
+    }
+
     try {
       setIsSavingDraft(true);
       setFormStatus("");
@@ -757,6 +849,10 @@ export default function PrescriptionForm() {
 
   useEffect(() => {
     if (!routePrescriptionId) return;
+    if (!isSupabaseConfigured) {
+      setFormStatus("Frontend-only mode: loading saved prescriptions is disabled.");
+      return;
+    }
     void loadPrescriptionForEdit(routePrescriptionId);
   }, [routePrescriptionId]);
 
@@ -766,6 +862,13 @@ export default function PrescriptionForm() {
       setFormStatus("");
       const pdfBytes = await createCurrentPdfBytes();
       triggerPdfDownload(pdfBytes);
+
+      if (!isSupabaseConfigured) {
+        setPrescriptionStatus("doctor_approved");
+        setIsApproveModalOpen(false);
+        setFormStatus("Prescription approved locally and PDF downloaded.");
+        return;
+      }
 
       try {
         const savedDraftId = await persistPrescription({ status: "draft" });
@@ -815,6 +918,21 @@ export default function PrescriptionForm() {
   }
 
   async function resaveAndDownloadPdf() {
+    if (!isSupabaseConfigured) {
+      try {
+        setIsResavingPdf(true);
+        setFormStatus("");
+        const pdfBytes = await createCurrentPdfBytes();
+        triggerPdfDownload(pdfBytes);
+        setFormStatus("Frontend-only mode: PDF downloaded (no database sync).");
+      } catch (error) {
+        setFormStatus(String(error?.message || "Failed to download PDF."));
+      } finally {
+        setIsResavingPdf(false);
+      }
+      return;
+    }
+
     try {
       setIsResavingPdf(true);
       setFormStatus("");
@@ -1063,14 +1181,7 @@ export default function PrescriptionForm() {
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
               <p className={sectionTitleClassName}>Vitals</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <input
-                  type="text"
-                  placeholder="Weight (e.g. 64 kg)"
-                  value={vitals.weight}
-                  onChange={(e) => updateVitals("weight", e.target.value)}
-                  className={inputClassName}
-                />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <input
                   type="text"
                   placeholder="Blood Pressure (e.g. 120/80)"
@@ -1080,9 +1191,23 @@ export default function PrescriptionForm() {
                 />
                 <input
                   type="text"
-                  placeholder="Blood Sugar (e.g. 98 mg/dL)"
-                  value={vitals.bloodSugar}
-                  onChange={(e) => updateVitals("bloodSugar", e.target.value)}
+                  placeholder="Pulse (e.g. 78 bpm)"
+                  value={vitals.pulse}
+                  onChange={(e) => updateVitals("pulse", e.target.value)}
+                  className={inputClassName}
+                />
+                <input
+                  type="text"
+                  placeholder="SpO2 (e.g. 98%)"
+                  value={vitals.spo2}
+                  onChange={(e) => updateVitals("spo2", e.target.value)}
+                  className={inputClassName}
+                />
+                <input
+                  type="text"
+                  placeholder="Weight (e.g. 64 kg)"
+                  value={vitals.weight}
+                  onChange={(e) => updateVitals("weight", e.target.value)}
                   className={inputClassName}
                 />
               </div>

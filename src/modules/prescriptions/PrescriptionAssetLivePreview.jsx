@@ -75,10 +75,6 @@ export default function PrescriptionAssetLivePreview({
   }, []);
 
   const dateText = valueOrDash(date);
-  const doctorHeaderNameText = doctor?.name ? `Dr. ${sanitizeInlineText(doctor.name)}` : "";
-  const doctorHeaderRegText = doctor?.registration
-    ? `Reg No: ${sanitizeInlineText(doctor.registration)}`
-    : "";
   const patientNameText = valueOrBlank(patient?.name);
   const ageText = valueOrBlank(patient?.age);
   const doctorNameText = doctor?.name ? `Dr. ${doctor.name}` : "";
@@ -87,13 +83,13 @@ export default function PrescriptionAssetLivePreview({
     () => fitPreviewTextSize(dateText, TEMPLATE_POS.date),
     [dateText]
   );
-  const doctorHeaderNameSize = useMemo(
-    () => fitPreviewTextSize(doctorHeaderNameText, TEMPLATE_POS.doctorHeaderName),
-    [doctorHeaderNameText]
+  const clinicHeaderNameSize = useMemo(
+    () => fitPreviewTextSize("MyStree Clinic", TEMPLATE_POS.clinicHeaderName),
+    []
   );
-  const doctorHeaderRegSize = useMemo(
-    () => fitPreviewTextSize(doctorHeaderRegText, TEMPLATE_POS.doctorHeaderReg),
-    [doctorHeaderRegText]
+  const clinicHeaderCodeSize = useMemo(
+    () => fitPreviewTextSize("#3366", TEMPLATE_POS.clinicHeaderCode),
+    []
   );
   const patientNameSize = useMemo(
     () => fitPreviewTextSize(patientNameText, TEMPLATE_POS.patientName),
@@ -169,42 +165,39 @@ export default function PrescriptionAssetLivePreview({
           {dateText}
         </div>
 
-        {doctorHeaderNameText ? (
-          <div
-            className="absolute"
-            style={{
-              left: `${TEMPLATE_POS.doctorHeaderName.x * previewScale}px`,
-              top: `${TEMPLATE_POS.doctorHeaderName.yTop * previewScale}px`,
-              fontSize: `${doctorHeaderNameSize * previewScale}px`,
-              maxWidth: `${TEMPLATE_POS.doctorHeaderName.maxWidth * previewScale}px`,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              fontFamily: PREVIEW_FONT_FAMILY,
-              fontWeight: 700,
-            }}
-          >
-            {doctorHeaderNameText}
-          </div>
-        ) : null}
+        <div
+          className="absolute text-right"
+          style={{
+            left: `${TEMPLATE_POS.clinicHeaderName.x * previewScale}px`,
+            top: `${TEMPLATE_POS.clinicHeaderName.yTop * previewScale}px`,
+            width: `${TEMPLATE_POS.clinicHeaderName.maxWidth * previewScale}px`,
+            fontSize: `${clinicHeaderNameSize * previewScale}px`,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            fontFamily: PREVIEW_FONT_FAMILY,
+            fontWeight: 700,
+            color: "#ED5B2D",
+          }}
+        >
+          MyStree Clinic
+        </div>
 
-        {doctorHeaderRegText ? (
-          <div
-            className="absolute"
-            style={{
-              left: `${TEMPLATE_POS.doctorHeaderReg.x * previewScale}px`,
-              top: `${TEMPLATE_POS.doctorHeaderReg.yTop * previewScale}px`,
-              fontSize: `${doctorHeaderRegSize * previewScale}px`,
-              maxWidth: `${TEMPLATE_POS.doctorHeaderReg.maxWidth * previewScale}px`,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              fontFamily: "Arial, sans-serif",
-              fontWeight: 500,
-              color: "#475569",
-            }}
-          >
-            {doctorHeaderRegText}
-          </div>
-        ) : null}
+        <div
+          className="absolute text-right"
+          style={{
+            left: `${TEMPLATE_POS.clinicHeaderCode.x * previewScale}px`,
+            top: `${TEMPLATE_POS.clinicHeaderCode.yTop * previewScale}px`,
+            width: `${TEMPLATE_POS.clinicHeaderCode.maxWidth * previewScale}px`,
+            fontSize: `${clinicHeaderCodeSize * previewScale}px`,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            fontFamily: PREVIEW_FONT_FAMILY,
+            fontWeight: 600,
+            color: "#475569",
+          }}
+        >
+          #3366
+        </div>
 
         <div
           className="absolute"

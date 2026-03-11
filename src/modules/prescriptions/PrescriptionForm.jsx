@@ -5,7 +5,15 @@ import PrescriptionAssetLivePreview from "./PrescriptionAssetLivePreview";
 import { generatePrescriptionPdfFromTemplate } from "./generateTemplatePdf";
 
 function createMedicineRow() {
-  return { medicine: "", dosage: "", frequency: "", duration: "", notes: "" };
+  return {
+    type: "Tab",
+    medicine: "",
+    dosage: "",
+    frequency: "",
+    duration: "",
+    mealTiming: "After Food",
+    notes: "",
+  };
 }
 
 const inputClassName =
@@ -16,6 +24,109 @@ const sectionTitleClassName =
 
 const DEFAULT_CLINIC_HOURS = "Mon-Sat: 9:00 AM - 7:00 PM";
 const DEFAULT_CLOSED_DAYS = "Sunday";
+const MEDICINE_TYPE_OPTIONS = ["Tab", "Cap", "Syr", "Inj", "Oint"];
+const MEAL_TIMING_OPTIONS = ["After Food", "Before Food", "Empty Stomach", "With Food"];
+const COMMON_MEDICINES = [
+  "Paracetamol 500 mg",
+  "Azithromycin 500 mg",
+  "Pantoprazole 40 mg",
+  "Cetirizine 10 mg",
+  "Levocetirizine 5 mg",
+  "Ondansetron 4 mg",
+  "Dolo 650",
+  "Crocin 650",
+  "Amoxicillin 500 mg",
+  "Ibuprofen 400 mg",
+  "ORS Sachet",
+  "Meftal Spas",
+  "Montek LC",
+  "Rabeprazole 20 mg",
+  "Becosules",
+  "Benadryl Syrup",
+];
+const PRESCRIPTION_TEMPLATES = [
+  {
+    key: "viral-fever",
+    label: "Viral Fever",
+    diagnosis: "Viral fever with body ache and mild throat discomfort.",
+    advice:
+      "Take adequate rest, drink warm fluids, monitor temperature, and return if symptoms worsen or persist beyond 3 days.",
+    medicines: [
+      {
+        type: "Tab",
+        medicine: "Paracetamol 650 mg",
+        dosage: "1 tab",
+        frequency: "TID",
+        duration: "3 days",
+        mealTiming: "After Food",
+        notes: "For fever and body ache",
+      },
+      {
+        type: "Tab",
+        medicine: "Cetirizine 10 mg",
+        dosage: "1 tab",
+        frequency: "HS",
+        duration: "3 days",
+        mealTiming: "After Food",
+        notes: "For cold symptoms",
+      },
+    ],
+  },
+  {
+    key: "acidity",
+    label: "Acidity / Gastritis",
+    diagnosis: "Acute gastritis with acidity and bloating.",
+    advice:
+      "Avoid oily and spicy food, take small meals, stay hydrated, and do not skip breakfast.",
+    medicines: [
+      {
+        type: "Tab",
+        medicine: "Pantoprazole 40 mg",
+        dosage: "1 tab",
+        frequency: "OD",
+        duration: "5 days",
+        mealTiming: "Before Food",
+        notes: "Take before breakfast",
+      },
+      {
+        type: "Syr",
+        medicine: "Antacid Gel",
+        dosage: "10 ml",
+        frequency: "TID",
+        duration: "5 days",
+        mealTiming: "After Food",
+        notes: "For burning sensation",
+      },
+    ],
+  },
+  {
+    key: "migraine",
+    label: "Migraine",
+    diagnosis: "Migraine headache with light sensitivity.",
+    advice:
+      "Sleep well, avoid screen strain, maintain hydration, and return if headache becomes severe or recurrent.",
+    medicines: [
+      {
+        type: "Tab",
+        medicine: "Paracetamol 650 mg",
+        dosage: "1 tab",
+        frequency: "SOS",
+        duration: "3 days",
+        mealTiming: "After Food",
+        notes: "At onset of pain",
+      },
+      {
+        type: "Tab",
+        medicine: "Pantoprazole 40 mg",
+        dosage: "1 tab",
+        frequency: "OD",
+        duration: "3 days",
+        mealTiming: "Before Food",
+        notes: "For gastric protection",
+      },
+    ],
+  },
+];
 
 const DOCTOR_SIGNATURE_SELECT =
   "name, signature_url, signature_path, image_url, image_path";
@@ -100,10 +211,12 @@ function isMissingColumnError(error, columnName) {
 function normalizeMedicineRows(rows) {
   return rows
     .map((item) => ({
+      type: String(item?.type || "").trim(),
       medicine: String(item?.medicine || "").trim(),
       dosage: String(item?.dosage || "").trim(),
       frequency: String(item?.frequency || "").trim(),
       duration: String(item?.duration || "").trim(),
+      mealTiming: String(item?.mealTiming || "").trim(),
       notes: String(item?.notes || "").trim(),
     }))
     .filter((item) => item.medicine);
@@ -157,6 +270,7 @@ export default function PrescriptionForm() {
   const [advice, setAdvice] = useState("");
   const [medicines, setMedicines] = useState([createMedicineRow()]);
   const [pdfPageSize, setPdfPageSize] = useState("a4");
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState("");
   const [signatureDataUrl, setSignatureDataUrl] = useState("");
   const [autoSignatureSource, setAutoSignatureSource] = useState("");
   const [signatureDoctorName, setSignatureDoctorName] = useState("");
@@ -241,6 +355,16 @@ export default function PrescriptionForm() {
   function removeMedicineRow(index) {
     if (!canRemoveMedicine) return;
     setMedicines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function applySelectedTemplate() {
+    const selectedTemplate = PRESCRIPTION_TEMPLATES.find((item) => item.key === selectedTemplateKey);
+    if (!selectedTemplate) return;
+
+    setDiagnosis(selectedTemplate.diagnosis);
+    setAdvice(selectedTemplate.advice);
+    setMedicines(selectedTemplate.medicines.map((item) => ({ ...createMedicineRow(), ...item })));
+    setFormStatus(`${selectedTemplate.label} template loaded.`);
   }
 
   function onSignatureChange(event) {
@@ -668,11 +792,11 @@ export default function PrescriptionForm() {
 
     const modernRows = cleanedRows.map((row, index) => ({
       prescription_id: targetPrescriptionId,
-      medicine: row.medicine,
+      medicine: [row.type, row.medicine].filter(Boolean).join(" "),
       dosage: toCleanText(row.dosage),
       frequency: toCleanText(row.frequency),
       duration: toCleanText(row.duration),
-      notes: toCleanText(row.notes),
+      notes: toCleanText([row.mealTiming, row.notes].filter(Boolean).join(" | ")),
       sort_order: index + 1,
     }));
 
@@ -684,11 +808,11 @@ export default function PrescriptionForm() {
 
     const legacyRows = cleanedRows.map((row) => ({
       prescription_id: targetPrescriptionId,
-      medicine_name: row.medicine,
+      medicine_name: [row.type, row.medicine].filter(Boolean).join(" "),
       dosage: toCleanText(row.dosage),
       frequency: toCleanText(row.frequency),
       duration: toCleanText(row.duration),
-      instructions: toCleanText(row.notes),
+      instructions: toCleanText([row.mealTiming, row.notes].filter(Boolean).join(" | ")),
     }));
 
     const { error: legacyInsertError } = await supabase
@@ -736,10 +860,12 @@ export default function PrescriptionForm() {
     if (legacyError) throw legacyError;
 
     return (legacyData || []).map((row) => ({
+      type: "",
       medicine: row.medicine_name || "",
       dosage: row.dosage || "",
       frequency: row.frequency || "",
       duration: row.duration || "",
+      mealTiming: "",
       notes: row.instructions || "",
     }));
   }
@@ -1054,6 +1180,29 @@ export default function PrescriptionForm() {
                   <option value="letter">US Letter</option>
                 </select>
               </label>
+              <label className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#8BA4BF]/50 bg-white px-3 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:min-w-[230px]">
+                Template
+                <select
+                  value={selectedTemplateKey}
+                  onChange={(e) => setSelectedTemplateKey(e.target.value)}
+                  className="min-w-[140px] rounded-md border border-[#8BA4BF]/50 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-[#ED5B2D]"
+                >
+                  <option value="">Select template</option>
+                  {PRESCRIPTION_TEMPLATES.map((template) => (
+                    <option key={template.key} value={template.key}>
+                      {template.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={applySelectedTemplate}
+                disabled={!selectedTemplateKey}
+                className="w-full rounded-xl border border-[#8BA4BF]/60 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#BFE2FE]/30 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              >
+                Load Template
+              </button>
               <button
                 type="button"
                 onClick={openApproveModal}
@@ -1275,11 +1424,23 @@ export default function PrescriptionForm() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <select
+                        value={medicine.type || "Tab"}
+                        onChange={(e) => updateMedicine(index, "type", e.target.value)}
+                        className={inputClassName}
+                      >
+                        {MEDICINE_TYPE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         placeholder="Medicine Name"
                         value={medicine.medicine}
                         onChange={(e) => updateMedicine(index, "medicine", e.target.value)}
+                        list="common-medicine-options"
                         className={inputClassName}
                       />
                       <input
@@ -1303,9 +1464,20 @@ export default function PrescriptionForm() {
                         onChange={(e) => updateMedicine(index, "duration", e.target.value)}
                         className={inputClassName}
                       />
+                      <select
+                        value={medicine.mealTiming || "After Food"}
+                        onChange={(e) => updateMedicine(index, "mealTiming", e.target.value)}
+                        className={inputClassName}
+                      >
+                        {MEAL_TIMING_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
                       <textarea
                         rows={2}
-                        placeholder="Medication remark (e.g. after food, avoid driving, with warm water)"
+                        placeholder="Medication remark (e.g. avoid driving, with warm water)"
                         value={medicine.notes}
                         onChange={(e) => updateMedicine(index, "notes", e.target.value)}
                         className={`${inputClassName} sm:col-span-2`}
@@ -1314,6 +1486,11 @@ export default function PrescriptionForm() {
                   </div>
                 ))}
               </div>
+              <datalist id="common-medicine-options">
+                {COMMON_MEDICINES.map((medicineName) => (
+                  <option key={medicineName} value={medicineName} />
+                ))}
+              </datalist>
             </div>
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">

@@ -12,9 +12,9 @@ export const TEMPLATE_POS = {
   logoMask: { x: 20, yTop: 10, width: 382, height: 112 },
   logo: { x: 42, yTop: 22, width: 270, height: 79 },
   // Calibrated against text matrix coordinates from Design - Front V1.pdf
+  clinicHeaderName: { x: 736, yTop: 30, size: 15, minSize: 11, maxWidth: 240 },
+  clinicHeaderCode: { x: 736, yTop: 50, size: 13, minSize: 10, maxWidth: 240 },
   date: { x: 736, yTop: 170, size: 20, minSize: 15, maxWidth: 245 },
-  doctorHeaderName: { x: 286, yTop: 166, size: 19, minSize: 14, maxWidth: 360 },
-  doctorHeaderReg: { x: 286, yTop: 190, size: 15, minSize: 12, maxWidth: 360 },
   patientName: { x: 286, yTop: 219, size: 22, minSize: 15, maxWidth: 470 },
   age: { x: 818, yTop: 224, size: 22, minSize: 15, maxWidth: 115 },
   vitalsColumn: {

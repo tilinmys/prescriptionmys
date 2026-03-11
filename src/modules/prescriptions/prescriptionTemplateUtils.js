@@ -144,13 +144,20 @@ function splitClinicalParagraphs(value) {
 
 export function normalizeMedicineGridRows(medicines) {
   return (medicines || [])
-    .map((item) => ({
-      medicine: sanitizeInlineText(item?.medicine),
+    .map((item) => {
+      const type = sanitizeInlineText(item?.type);
+      const medicine = sanitizeInlineText(item?.medicine);
+      const mealTiming = sanitizeInlineText(item?.mealTiming);
+      const notes = [mealTiming, sanitizeInlineText(item?.notes)].filter(Boolean).join(" | ");
+
+      return {
+      medicine: [type, medicine].filter(Boolean).join(" "),
       dosage: sanitizeInlineText(item?.dosage),
       frequency: sanitizeInlineText(item?.frequency),
       duration: sanitizeInlineText(item?.duration),
-      notes: sanitizeInlineText(item?.notes),
-    }))
+      notes,
+    };
+    })
     .filter((item) => item.medicine || item.dosage || item.frequency || item.duration || item.notes);
 }
 

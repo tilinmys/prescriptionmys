@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import templatePdf from "../../../assets/Design - Front V1.pdf";
-import officialLogo from "../../assets/mystreelogo-official.svg";
+import officialLogo from "../../assets/mystree-logo-clean.svg";
 import {
   buildPrescriptionBlocks,
   composePrescriptionBodyLayout,
@@ -213,21 +213,13 @@ export async function generatePrescriptionPdfFromTemplate({
     height: TEMPLATE_POS.logo.height,
   });
 
+  drawFittedLine(page, boldFont, "MyStree Clinic", TEMPLATE_POS.clinicHeaderName, {
+    align: "right",
+  });
+  drawFittedLine(page, regularFont, "#3366", TEMPLATE_POS.clinicHeaderCode, {
+    align: "right",
+  });
   drawFittedLine(page, boldFont, date, TEMPLATE_POS.date);
-  drawFittedLine(
-    page,
-    boldFont,
-    doctor?.name ? `Dr. ${sanitizeInlineText(doctor.name)}` : "",
-    TEMPLATE_POS.doctorHeaderName,
-    { blankIfEmpty: true }
-  );
-  drawFittedLine(
-    page,
-    regularFont,
-    doctor?.registration ? `Reg No: ${sanitizeInlineText(doctor.registration)}` : "",
-    TEMPLATE_POS.doctorHeaderReg,
-    { blankIfEmpty: true }
-  );
   drawFittedLine(page, boldFont, patient?.name, TEMPLATE_POS.patientName, {
     blankIfEmpty: true,
   });

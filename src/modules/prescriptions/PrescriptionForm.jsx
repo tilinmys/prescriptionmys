@@ -1,18 +1,95 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
 import { useNavigate, useParams } from "react-router-dom";
 import PrescriptionAssetLivePreview from "./PrescriptionAssetLivePreview";
 import { generatePrescriptionPdfFromTemplate } from "./generateTemplatePdf";
+import { VITAL_FIELDS } from "./prescriptionTemplateUtils";
 
 function createMedicineRow() {
   return {
-    type: "Tab",
+    type: "",
     medicine: "",
     dosage: "",
     frequency: "",
     duration: "",
     mealTiming: "After Food",
     notes: "",
+    visibleFields: ["type", "medicine", "dosage", "frequency", "duration", "mealTiming", "notes"],
+  };
+}
+
+function createEmptyVitals() {
+  return {
+    weight: "",
+    bloodPressure: "",
+    pulse: "",
+    spo2: "",
+  };
+}
+
+const ALL_VITAL_FIELD_KEYS = VITAL_FIELDS.map((field) => field.key);
+const MEDICINE_FIELD_CONFIG = [
+  {
+    key: "type",
+    label: "Type",
+    defaultValue: "",
+    clearValue: "",
+    span: "sm:col-span-1",
+  },
+  {
+    key: "medicine",
+    label: "Medicine Name",
+    defaultValue: "",
+    clearValue: "",
+    span: "sm:col-span-1",
+  },
+  {
+    key: "dosage",
+    label: "Dosage",
+    defaultValue: "",
+    clearValue: "",
+    span: "sm:col-span-1",
+  },
+  {
+    key: "frequency",
+    label: "Frequency",
+    defaultValue: "",
+    clearValue: "",
+    span: "sm:col-span-1",
+  },
+  {
+    key: "duration",
+    label: "Duration",
+    defaultValue: "",
+    clearValue: "",
+    span: "sm:col-span-1",
+  },
+  {
+    key: "mealTiming",
+    label: "Meal Timing",
+    defaultValue: "After Food",
+    clearValue: "",
+    span: "sm:col-span-1",
+  },
+  {
+    key: "notes",
+    label: "Medication Remark",
+    defaultValue: "",
+    clearValue: "",
+    span: "sm:col-span-2",
+  },
+];
+const ALL_MEDICINE_FIELD_KEYS = MEDICINE_FIELD_CONFIG.map((field) => field.key);
+
+function normalizeMedicineInputRow(item) {
+  const nextVisibleFields = Array.isArray(item?.visibleFields)
+    ? ALL_MEDICINE_FIELD_KEYS.filter((key) => item.visibleFields.includes(key))
+    : ALL_MEDICINE_FIELD_KEYS;
+
+  return {
+    ...createMedicineRow(),
+    ...item,
+    visibleFields: nextVisibleFields,
   };
 }
 
@@ -24,8 +101,111 @@ const sectionTitleClassName =
 
 const DEFAULT_CLINIC_HOURS = "Mon-Sat: 9:00 AM - 7:00 PM";
 const DEFAULT_CLOSED_DAYS = "Sunday";
+const DEFAULT_DOCTOR = Object.freeze({
+  name: "",
+  registration: "",
+});
+const LOCAL_STORAGE_DOCTOR_DEFAULTS_KEY = "prescription:doctor-defaults";
+const LOCAL_STORAGE_RECENT_MEDICINES_KEY = "prescription:recent-medicines";
+const LOCAL_STORAGE_LAST_VITALS_KEY = "prescription:last-vitals";
+const LOCAL_STORAGE_RECENT_DIAGNOSES_KEY = "prescription:recent-diagnoses";
+const LOCAL_STORAGE_RECENT_ADVICE_KEY = "prescription:recent-advice";
+const LOCAL_STORAGE_LAST_SIGNATURE_KEY = "prescription:last-signature";
 const MEDICINE_TYPE_OPTIONS = ["Tab", "Cap", "Syr", "Inj", "Oint"];
 const MEAL_TIMING_OPTIONS = ["After Food", "Before Food", "Empty Stomach", "With Food"];
+const COMMON_DIAGNOSES = [
+  "Viral Fever",
+  "Upper Respiratory Tract Infection",
+  "Acidity / Gastritis",
+  "Migraine",
+  "Hypertension",
+  "Allergic Rhinitis",
+  "Acute Pharyngitis",
+  "Gastroenteritis",
+  "Type 2 Diabetes Follow-up",
+  "General Weakness / Fatigue",
+];
+const ADVICE_SNIPPETS = [
+  "Take adequate rest",
+  "Drink plenty of fluids",
+  "Monitor temperature and symptoms",
+  "Avoid oily and spicy food",
+  "Avoid smoke and dust exposure",
+  "Complete the full course of medicines",
+  "Return immediately if symptoms worsen",
+  "Review after 3 days",
+];
+const FOLLOW_UP_OPTIONS = [
+  { label: "3 Days", days: 3 },
+  { label: "1 Week", days: 7 },
+  { label: "2 Weeks", days: 14 },
+  { label: "1 Month", days: 30 },
+];
+const QUICK_MEDICINE_PRESETS = [
+  {
+    key: "paracetamol-650",
+    label: "Paracetamol 650",
+    row: {
+      type: "Tab",
+      medicine: "Paracetamol 650 mg",
+      dosage: "1 tab",
+      frequency: "TID",
+      duration: "3 days",
+      mealTiming: "After Food",
+      notes: "For fever and body ache",
+    },
+  },
+  {
+    key: "cetirizine-10",
+    label: "Cetirizine 10",
+    row: {
+      type: "Tab",
+      medicine: "Cetirizine 10 mg",
+      dosage: "1 tab",
+      frequency: "HS",
+      duration: "3 days",
+      mealTiming: "After Food",
+      notes: "For allergy / cold symptoms",
+    },
+  },
+  {
+    key: "pantoprazole-40",
+    label: "Pantoprazole 40",
+    row: {
+      type: "Tab",
+      medicine: "Pantoprazole 40 mg",
+      dosage: "1 tab",
+      frequency: "OD",
+      duration: "5 days",
+      mealTiming: "Before Food",
+      notes: "Take before breakfast",
+    },
+  },
+  {
+    key: "ors-sachet",
+    label: "ORS Sachet",
+    row: {
+      type: "Syr",
+      medicine: "ORS Sachet",
+      dosage: "1 sachet",
+      frequency: "SOS",
+      duration: "2 days",
+      mealTiming: "After Food",
+      notes: "Sip frequently",
+    },
+  },
+];
+const MEDICINE_SUGGESTION_MAP = QUICK_MEDICINE_PRESETS.reduce((accumulator, preset) => {
+  accumulator[preset.row.medicine.toLowerCase()] = preset.row;
+  return accumulator;
+}, {});
+const BASIC_ALLERGY_KEYWORDS = {
+  paracetamol: ["paracetamol", "acetaminophen"],
+  cetirizine: ["cetirizine"],
+  azithromycin: ["azithromycin", "macrolide"],
+  amoxicillin: ["amoxicillin", "penicillin"],
+  ibuprofen: ["ibuprofen", "nsaid"],
+};
 const COMMON_MEDICINES = [
   "Paracetamol 500 mg",
   "Azithromycin 500 mg",
@@ -44,6 +224,123 @@ const COMMON_MEDICINES = [
   "Becosules",
   "Benadryl Syrup",
 ];
+
+function safeParseJson(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeQuickMedicineRow(item) {
+  return normalizeMedicineInputRow({
+    ...createMedicineRow(),
+    ...item,
+  });
+}
+
+function normalizeDoctorDetails(doctorLike) {
+  return {
+    ...DEFAULT_DOCTOR,
+    ...doctorLike,
+    name: String(doctorLike?.name || DEFAULT_DOCTOR.name),
+    registration: String(
+      doctorLike?.registration ??
+        doctorLike?.registration_number ??
+        doctorLike?.reg_no ??
+        DEFAULT_DOCTOR.registration
+    ),
+  };
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getFollowUpDateFromDays(days) {
+  const nextDate = new Date();
+  nextDate.setDate(nextDate.getDate() + days);
+  return formatDateInput(nextDate);
+}
+
+function normalizePatientKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildRecentTextList(nextValue, existingValues, limit = 8) {
+  const normalizedNext = String(nextValue || "").trim();
+  const filteredExisting = (existingValues || []).filter(
+    (item) => String(item || "").trim() && String(item || "").trim() !== normalizedNext
+  );
+  return normalizedNext ? [normalizedNext, ...filteredExisting].slice(0, limit) : filteredExisting.slice(0, limit);
+}
+
+function hasValue(value) {
+  return !!String(value || "").trim();
+}
+
+function serializeMedicineRowForHistory(item) {
+  return {
+    type: String(item?.type || "").trim(),
+    medicine: String(item?.medicine || "").trim(),
+    dosage: String(item?.dosage || "").trim(),
+    frequency: String(item?.frequency || "").trim(),
+    duration: String(item?.duration || "").trim(),
+    mealTiming: String(item?.mealTiming || "").trim(),
+    notes: String(item?.notes || "").trim(),
+  };
+}
+
+function buildSafetyWarnings({ medicines, patientAllergies, age }) {
+  const warnings = [];
+  const normalizedAge = Number.parseInt(String(age || "").trim(), 10);
+  const rows = (medicines || [])
+    .map((item) => serializeMedicineRowForHistory(item))
+    .filter((item) => item.medicine);
+  const allergyText = String(patientAllergies || "").toLowerCase();
+  const medicineNames = rows.map((row) => row.medicine.toLowerCase());
+
+  const seenMedicines = new Set();
+  rows.forEach((row) => {
+    const normalizedMedicine = row.medicine.toLowerCase();
+    if (seenMedicines.has(normalizedMedicine)) {
+      warnings.push(`Duplicate medicine entry detected: ${row.medicine}`);
+    }
+    seenMedicines.add(normalizedMedicine);
+  });
+
+  Object.entries(BASIC_ALLERGY_KEYWORDS).forEach(([medicineKey, keywords]) => {
+    const matchesMedicine = medicineNames.some((name) => name.includes(medicineKey));
+    const matchesAllergy = keywords.some((keyword) => allergyText.includes(keyword));
+    if (matchesMedicine && matchesAllergy) {
+      warnings.push(`Potential allergy warning: review ${medicineKey} against the recorded allergy list.`);
+    }
+  });
+
+  if (Number.isFinite(normalizedAge) && normalizedAge <= 12) {
+    rows.forEach((row) => {
+      const dosageText = `${row.dosage} ${row.notes}`.toLowerCase();
+      if (/(650|500)\s*mg/.test(dosageText) || /(650|500)\s*mg/.test(row.medicine.toLowerCase())) {
+        warnings.push(`Pediatric caution: verify adult-strength dosage for ${row.medicine}.`);
+      }
+    });
+  }
+
+  if (Number.isFinite(normalizedAge) && normalizedAge >= 65) {
+    rows.forEach((row) => {
+      if (row.medicine.toLowerCase().includes("ibuprofen")) {
+        warnings.push(`Senior caution: review NSAID use and renal risk for ${row.medicine}.`);
+      }
+    });
+  }
+
+  return Array.from(new Set(warnings));
+}
 const PRESCRIPTION_TEMPLATES = [
   {
     key: "viral-fever",
@@ -210,15 +507,20 @@ function isMissingColumnError(error, columnName) {
 
 function normalizeMedicineRows(rows) {
   return rows
-    .map((item) => ({
-      type: String(item?.type || "").trim(),
-      medicine: String(item?.medicine || "").trim(),
-      dosage: String(item?.dosage || "").trim(),
-      frequency: String(item?.frequency || "").trim(),
-      duration: String(item?.duration || "").trim(),
-      mealTiming: String(item?.mealTiming || "").trim(),
-      notes: String(item?.notes || "").trim(),
-    }))
+    .map((item) => {
+      const visibleFields = Array.isArray(item?.visibleFields) ? item.visibleFields : null;
+      const isVisible = (fieldKey) => !visibleFields || visibleFields.includes(fieldKey);
+
+      return {
+        type: isVisible("type") ? String(item?.type || "").trim() : "",
+        medicine: isVisible("medicine") ? String(item?.medicine || "").trim() : "",
+        dosage: isVisible("dosage") ? String(item?.dosage || "").trim() : "",
+        frequency: isVisible("frequency") ? String(item?.frequency || "").trim() : "",
+        duration: isVisible("duration") ? String(item?.duration || "").trim() : "",
+        mealTiming: isVisible("mealTiming") ? String(item?.mealTiming || "").trim() : "",
+        notes: isVisible("notes") ? String(item?.notes || "").trim() : "",
+      };
+    })
     .filter((item) => item.medicine);
 }
 
@@ -236,6 +538,7 @@ function useDebouncedValue(value, delayMs = 140) {
 export default function PrescriptionForm() {
   const navigate = useNavigate();
   const { id: routePrescriptionId } = useParams();
+  const templateSelectRef = useRef(null);
 
   const today = useMemo(
     () =>
@@ -247,21 +550,16 @@ export default function PrescriptionForm() {
     []
   );
 
-  const [doctor, setDoctor] = useState({
-    name: "",
-    registration: "",
-  });
+  const [doctor, setDoctor] = useState(() => ({ ...DEFAULT_DOCTOR }));
+  const [rememberDoctorInfo, setRememberDoctorInfo] = useState(true);
+  const [isDoctorSectionExpanded, setIsDoctorSectionExpanded] = useState(true);
   const [patient, setPatient] = useState({
     name: "",
     age: "",
     gender: "",
   });
-  const [vitals, setVitals] = useState({
-    weight: "",
-    bloodPressure: "",
-    pulse: "",
-    spo2: "",
-  });
+  const [vitals, setVitals] = useState(createEmptyVitals);
+  const [showVitals, setShowVitals] = useState(true);
   const [clinicMeta, setClinicMeta] = useState({
     hours: DEFAULT_CLINIC_HOURS,
     closedDays: DEFAULT_CLOSED_DAYS,
@@ -269,11 +567,13 @@ export default function PrescriptionForm() {
   const [diagnosis, setDiagnosis] = useState("");
   const [advice, setAdvice] = useState("");
   const [medicines, setMedicines] = useState([createMedicineRow()]);
+  const [recentMedicines, setRecentMedicines] = useState([]);
   const [pdfPageSize, setPdfPageSize] = useState("a4");
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("");
   const [signatureDataUrl, setSignatureDataUrl] = useState("");
   const [autoSignatureSource, setAutoSignatureSource] = useState("");
   const [signatureDoctorName, setSignatureDoctorName] = useState("");
+  const [useLastSignature, setUseLastSignature] = useState(true);
   const [isFetchingSignature, setIsFetchingSignature] = useState(false);
   const [signatureStatus, setSignatureStatus] = useState("");
   const [prescriptionId, setPrescriptionId] = useState(routePrescriptionId || "");
@@ -285,13 +585,29 @@ export default function PrescriptionForm() {
   const [isLoadingExisting, setIsLoadingExisting] = useState(false);
   const [formStatus, setFormStatus] = useState("");
   const [mobileView, setMobileView] = useState("form");
+  const [visibleVitalFields, setVisibleVitalFields] = useState(ALL_VITAL_FIELD_KEYS);
+  const [expandedMedicineRemarks, setExpandedMedicineRemarks] = useState({});
 
-  const canRemoveMedicine = medicines.length > 1;
   const effectiveSignatureSource = signatureDataUrl || autoSignatureSource;
   const debouncedDiagnosis = useDebouncedValue(diagnosis);
   const debouncedAdvice = useDebouncedValue(advice);
   const debouncedMedicines = useDebouncedValue(medicines);
   const debouncedVitals = useDebouncedValue(vitals);
+  const visibleVitals = useMemo(
+    () => VITAL_FIELDS.filter((field) => visibleVitalFields.includes(field.key)),
+    [visibleVitalFields]
+  );
+  const effectiveVisibleVitalFields = useMemo(
+    () => (showVitals ? visibleVitalFields : []),
+    [showVitals, visibleVitalFields]
+  );
+  const hasAnyVitalValue = useMemo(
+    () => ALL_VITAL_FIELD_KEYS.some((fieldKey) => hasValue(vitals[fieldKey])),
+    [vitals]
+  );
+  const doctorSummary = doctor.name.trim()
+    ? `Using saved doctor: Dr. ${doctor.name.trim()}`
+    : "Doctor details";
 
   useEffect(() => {
     setPrescriptionId(routePrescriptionId || "");
@@ -301,16 +617,87 @@ export default function PrescriptionForm() {
   }, [routePrescriptionId]);
 
   useEffect(() => {
+    const storedDoctorDefaults = safeParseJson(
+      window.localStorage.getItem(LOCAL_STORAGE_DOCTOR_DEFAULTS_KEY),
+      null
+    );
+    if (storedDoctorDefaults) {
+      setDoctor((prev) =>
+        normalizeDoctorDetails({
+          ...prev,
+          name: storedDoctorDefaults.name || prev.name,
+          registration: storedDoctorDefaults.registration || prev.registration,
+        })
+      );
+      setRememberDoctorInfo(storedDoctorDefaults.remember !== false);
+      if (storedDoctorDefaults.name || storedDoctorDefaults.registration) {
+        setIsDoctorSectionExpanded(false);
+      }
+    }
+
+    const storedSignature = safeParseJson(
+      window.localStorage.getItem(LOCAL_STORAGE_LAST_SIGNATURE_KEY),
+      null
+    );
+    if (storedSignature?.dataUrl && storedSignature?.doctorName) {
+      setSignatureDataUrl(storedSignature.dataUrl);
+      setSignatureDoctorName(storedSignature.doctorName);
+      setSignatureStatus(`Using cached signature for Dr. ${storedSignature.doctorName}.`);
+    }
+
+    setRecentMedicines(
+      safeParseJson(window.localStorage.getItem(LOCAL_STORAGE_RECENT_MEDICINES_KEY), []).map(
+        (item) => normalizeQuickMedicineRow(item)
+      )
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!rememberDoctorInfo) {
+      window.localStorage.removeItem(LOCAL_STORAGE_DOCTOR_DEFAULTS_KEY);
+      return;
+    }
+
+    if (!doctor.name.trim() && !doctor.registration.trim()) return;
+    window.localStorage.setItem(
+      LOCAL_STORAGE_DOCTOR_DEFAULTS_KEY,
+      JSON.stringify({
+        name: doctor.name.trim(),
+        registration: doctor.registration.trim(),
+        remember: rememberDoctorInfo,
+      })
+    );
+  }, [doctor.name, doctor.registration, rememberDoctorInfo]);
+
+  useEffect(() => {
     function onKeyDown(event) {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
         void openApproveModal();
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && String(event.key || "").toLowerCase() === "m") {
+        event.preventDefault();
+        addMedicineRow();
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && String(event.key || "").toLowerCase() === "j") {
+        event.preventDefault();
+        handleLoadTemplate();
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [doctor.name, signatureDataUrl, autoSignatureSource, signatureDoctorName]);
+  }, [
+    doctor.name,
+    signatureDataUrl,
+    autoSignatureSource,
+    signatureDoctorName,
+    selectedTemplateKey,
+  ]);
 
   useEffect(() => {
     if (signatureDataUrl) return;
@@ -326,6 +713,30 @@ export default function PrescriptionForm() {
     }
   }, [doctor.name, signatureDataUrl, signatureDoctorName]);
 
+  useEffect(() => {
+    if (!useLastSignature || signatureDataUrl) return;
+    const cachedSignature = safeParseJson(
+      window.localStorage.getItem(LOCAL_STORAGE_LAST_SIGNATURE_KEY),
+      null
+    );
+    if (!cachedSignature?.doctorName || !cachedSignature?.dataUrl) return;
+    if (cachedSignature.doctorName.toLowerCase() !== doctor.name.trim().toLowerCase()) return;
+    setSignatureDataUrl(cachedSignature.dataUrl);
+    setSignatureStatus(`Using cached signature for Dr. ${cachedSignature.doctorName}.`);
+  }, [doctor.name, signatureDataUrl, useLastSignature]);
+
+  useEffect(() => {
+    const patientKey = normalizePatientKey(patient.name);
+    if (!patientKey) return;
+
+    const vitalsHistory = safeParseJson(
+      window.localStorage.getItem(LOCAL_STORAGE_LAST_VITALS_KEY),
+      {}
+    );
+    const historyEntry = vitalsHistory[patientKey];
+    if (!historyEntry?.vitals) return;
+  }, [patient.name]);
+
   function updateDoctor(field, value) {
     setDoctor((prev) => ({ ...prev, [field]: value }));
   }
@@ -338,13 +749,56 @@ export default function PrescriptionForm() {
     setVitals((prev) => ({ ...prev, [field]: value }));
   }
 
-  function updateClinicMeta(field, value) {
-    setClinicMeta((prev) => ({ ...prev, [field]: value }));
+  function removeAllVitalFields() {
+    setVitals(createEmptyVitals());
+    setShowVitals(false);
+  }
+
+  function restoreAllVitalFields() {
+    setVitals(createEmptyVitals());
+    setShowVitals(true);
   }
 
   function updateMedicine(index, field, value) {
     setMedicines((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+      prev.map((item, i) => {
+        if (i !== index) return item;
+
+        const nextItem = { ...item, [field]: value };
+        if (field !== "medicine") return nextItem;
+
+        const suggestedRow = MEDICINE_SUGGESTION_MAP[String(value || "").trim().toLowerCase()];
+        if (!suggestedRow) return nextItem;
+
+        return {
+          ...nextItem,
+          type: nextItem.type || suggestedRow.type,
+          dosage: nextItem.dosage || suggestedRow.dosage,
+          frequency: nextItem.frequency || suggestedRow.frequency,
+          duration: nextItem.duration || suggestedRow.duration,
+          mealTiming:
+            nextItem.mealTiming && nextItem.mealTiming !== "After Food"
+              ? nextItem.mealTiming
+              : suggestedRow.mealTiming,
+          notes: nextItem.notes || suggestedRow.notes,
+        };
+      })
+    );
+  }
+
+  function removeMedicineField(index, fieldKey) {
+    const config = MEDICINE_FIELD_CONFIG.find((field) => field.key === fieldKey);
+    if (!config) return;
+
+    setMedicines((prev) =>
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              [fieldKey]: config.clearValue,
+            }
+          : item
+      )
     );
   }
 
@@ -353,17 +807,31 @@ export default function PrescriptionForm() {
   }
 
   function removeMedicineRow(index) {
-    if (!canRemoveMedicine) return;
+    if (!window.confirm(`Remove Medicine ${index + 1} from this prescription?`)) return;
     setMedicines((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function handleLoadTemplate() {
+    if (!selectedTemplateKey) {
+      templateSelectRef.current?.focus();
+      setFormStatus("Select a template first, then load it into the form.");
+      return;
+    }
+
+    applySelectedTemplate();
+  }
+
   function applySelectedTemplate() {
+    if (!selectedTemplateKey) {
+      setFormStatus("Select a template first to load diagnosis, medicines, and advice.");
+      return;
+    }
     const selectedTemplate = PRESCRIPTION_TEMPLATES.find((item) => item.key === selectedTemplateKey);
     if (!selectedTemplate) return;
 
     setDiagnosis(selectedTemplate.diagnosis);
     setAdvice(selectedTemplate.advice);
-    setMedicines(selectedTemplate.medicines.map((item) => ({ ...createMedicineRow(), ...item })));
+    setMedicines(selectedTemplate.medicines.map((item) => normalizeMedicineInputRow(item)));
     setFormStatus(`${selectedTemplate.label} template loaded.`);
   }
 
@@ -379,8 +847,18 @@ export default function PrescriptionForm() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      setSignatureDataUrl(String(reader.result || ""));
+      const nextSignature = String(reader.result || "");
+      setSignatureDataUrl(nextSignature);
       setSignatureStatus("Using manually uploaded signature.");
+      if (useLastSignature && doctor.name.trim()) {
+        window.localStorage.setItem(
+          LOCAL_STORAGE_LAST_SIGNATURE_KEY,
+          JSON.stringify({
+            doctorName: doctor.name.trim(),
+            dataUrl: nextSignature,
+          })
+        );
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -390,6 +868,7 @@ export default function PrescriptionForm() {
     setAutoSignatureSource("");
     setSignatureDoctorName("");
     setSignatureStatus("Signature cleared.");
+    window.localStorage.removeItem(LOCAL_STORAGE_LAST_SIGNATURE_KEY);
   }
 
   async function resolveSignatureSource(rawReference) {
@@ -531,6 +1010,59 @@ export default function PrescriptionForm() {
     URL.revokeObjectURL(url);
   }
 
+  function persistWorkflowMemory() {
+    if (rememberDoctorInfo && (doctor.name.trim() || doctor.registration.trim())) {
+      window.localStorage.setItem(
+        LOCAL_STORAGE_DOCTOR_DEFAULTS_KEY,
+        JSON.stringify({
+          name: doctor.name.trim(),
+          registration: doctor.registration.trim(),
+          remember: true,
+        })
+      );
+    }
+
+    const patientKey = normalizePatientKey(patient.name);
+    if (patientKey && showVitals) {
+      const hasAnyVitalValue = ALL_VITAL_FIELD_KEYS.some((fieldKey) => String(vitals[fieldKey] || "").trim());
+      if (hasAnyVitalValue) {
+        const vitalsHistory = safeParseJson(
+          window.localStorage.getItem(LOCAL_STORAGE_LAST_VITALS_KEY),
+          {}
+        );
+        vitalsHistory[patientKey] = {
+          vitals: { ...vitals },
+          updatedAt: new Date().toISOString(),
+        };
+        window.localStorage.setItem(LOCAL_STORAGE_LAST_VITALS_KEY, JSON.stringify(vitalsHistory));
+      }
+    }
+
+    const nonEmptyMedicineRows = medicines
+      .map((item) => serializeMedicineRowForHistory(item))
+      .filter((item) => item.medicine);
+    const nextRecentMedicines = [
+      ...nonEmptyMedicineRows,
+      ...recentMedicines.map((item) => serializeMedicineRowForHistory(item)),
+    ].filter((item, index, source) => {
+      const key = `${item.type}|${item.medicine}|${item.dosage}|${item.frequency}|${item.duration}|${item.mealTiming}|${item.notes}`;
+      return source.findIndex((entry) => {
+        const entryKey = `${entry.type}|${entry.medicine}|${entry.dosage}|${entry.frequency}|${entry.duration}|${entry.mealTiming}|${entry.notes}`;
+        return entryKey === key;
+      }) === index;
+    });
+    const trimmedRecentMedicines = nextRecentMedicines.slice(0, 8).map((item) => normalizeQuickMedicineRow(item));
+    setRecentMedicines(trimmedRecentMedicines);
+    window.localStorage.setItem(
+      LOCAL_STORAGE_RECENT_MEDICINES_KEY,
+      JSON.stringify(trimmedRecentMedicines.map((item) => serializeMedicineRowForHistory(item)))
+    );
+  }
+
+  function buildAdviceWithFollowUp() {
+    return String(advice || "").trim();
+  }
+
   async function createCurrentPdfBytes() {
     const currentDoctorName = doctor.name.trim();
     const hasMatchingAutoSignature =
@@ -543,13 +1075,16 @@ export default function PrescriptionForm() {
       (hasMatchingAutoSignature ? autoSignatureSource : "") ||
       (await fetchSignatureFromDoctorProfile(doctor.name, { silent: true }));
 
+    persistWorkflowMemory();
+
     return generatePrescriptionPdfFromTemplate({
       doctor,
       patient,
       diagnosis,
-      advice,
+      advice: buildAdviceWithFollowUp(),
       medicines,
       vitals,
+      visibleVitalFields: effectiveVisibleVitalFields,
       date: today,
       signatureDataUrl: resolvedSignature,
       clinicHours: clinicMeta.hours,
@@ -625,7 +1160,7 @@ export default function PrescriptionForm() {
       doctor_id: doctorId,
       patient_id: patientId,
       diagnosis: toCleanText(diagnosis),
-      advice: toCleanText(advice),
+      advice: toCleanText(buildAdviceWithFollowUp()),
       weight: toCleanText(vitals.weight),
       blood_pressure: toCleanText(vitals.bloodPressure),
       pulse: toCleanText(vitals.pulse),
@@ -638,7 +1173,7 @@ export default function PrescriptionForm() {
       doctor_id: doctorId,
       patient_id: patientId,
       diagnosis: toCleanText(diagnosis),
-      advice: toCleanText(advice),
+      advice: toCleanText(buildAdviceWithFollowUp()),
       weight: toCleanText(vitals.weight),
       blood_pressure: toCleanText(vitals.bloodPressure),
       blood_sugar: toCleanText(vitals.spo2),
@@ -653,7 +1188,7 @@ export default function PrescriptionForm() {
       doctor_id: doctorId,
       patient_id: patientId,
       diagnosis: toCleanText(diagnosis),
-      notes: toCleanText(advice),
+      notes: toCleanText(buildAdviceWithFollowUp()),
       prescribed_on: new Date().toISOString().slice(0, 10),
     };
 
@@ -870,6 +1405,38 @@ export default function PrescriptionForm() {
     }));
   }
 
+  async function fetchDoctorForEdit(targetDoctorId) {
+    const doctorSelectOptions = [
+      "id,name,registration",
+      "id,name,registration_number",
+      "id,name,reg_no",
+      "id,name",
+    ];
+
+    let lastError = null;
+    for (const selectClause of doctorSelectOptions) {
+      const response = await supabase
+        .from("doctors")
+        .select(selectClause)
+        .eq("id", targetDoctorId)
+        .maybeSingle();
+
+      if (!response.error) {
+        return response;
+      }
+      lastError = response.error;
+      const isRegistrationColumnMismatch =
+        isMissingColumnError(response.error, "registration") ||
+        isMissingColumnError(response.error, "registration_number") ||
+        isMissingColumnError(response.error, "reg_no");
+      if (!isRegistrationColumnMismatch) {
+        return response;
+      }
+    }
+
+    return { data: null, error: lastError };
+  }
+
   async function loadPrescriptionForEdit(targetId) {
     setIsLoadingExisting(true);
     setFormStatus("");
@@ -909,11 +1476,7 @@ export default function PrescriptionForm() {
       if (prescriptionError) throw prescriptionError;
 
       const [doctorResult, patientResult, itemRows] = await Promise.all([
-        supabase
-          .from("doctors")
-          .select("id,name")
-          .eq("id", prescriptionRow.doctor_id)
-          .maybeSingle(),
+        fetchDoctorForEdit(prescriptionRow.doctor_id),
         supabase
           .from("patients")
           .select("id,name")
@@ -925,23 +1488,36 @@ export default function PrescriptionForm() {
       if (doctorResult.error) throw doctorResult.error;
       if (patientResult.error) throw patientResult.error;
 
-      setDoctor((prev) => ({
-        ...prev,
-        name: doctorResult.data?.name || "",
-      }));
+      setDoctor((prev) =>
+        normalizeDoctorDetails({
+          ...prev,
+          name: doctorResult.data?.name || "",
+          registration:
+            doctorResult.data?.registration ??
+            doctorResult.data?.registration_number ??
+            doctorResult.data?.reg_no ??
+            prev.registration,
+        })
+      );
       setPatient((prev) => ({
         ...prev,
         name: patientResult.data?.name || "",
       }));
       setDiagnosis(prescriptionRow.diagnosis || "");
       setAdvice(prescriptionRow.advice || prescriptionRow.notes || "");
-      setVitals({
+      const nextVitals = {
         weight: prescriptionRow.weight || "",
         bloodPressure: prescriptionRow.blood_pressure || "",
         pulse: prescriptionRow.pulse || "",
         spo2: prescriptionRow.spo2 || prescriptionRow.blood_sugar || "",
-      });
-      setMedicines(itemRows.length ? itemRows : [createMedicineRow()]);
+      };
+      const hasLoadedVitals = ALL_VITAL_FIELD_KEYS.some((fieldKey) =>
+        String(nextVitals[fieldKey] || "").trim()
+      );
+      setVitals(nextVitals);
+      setShowVitals(hasLoadedVitals);
+      setVisibleVitalFields(ALL_VITAL_FIELD_KEYS);
+      setMedicines(itemRows.map((item) => normalizeMedicineInputRow(item)));
       setPrescriptionStatus(prescriptionRow.status || "draft");
       setFormStatus("Prescription loaded.");
     } catch (error) {
@@ -953,6 +1529,7 @@ export default function PrescriptionForm() {
 
   async function saveDraft() {
     if (!isSupabaseConfigured) {
+      persistWorkflowMemory();
       setPrescriptionStatus("draft");
       setFormStatus("Frontend-only mode: draft is not saved to database.");
       return;
@@ -961,6 +1538,7 @@ export default function PrescriptionForm() {
     try {
       setIsSavingDraft(true);
       setFormStatus("");
+      persistWorkflowMemory();
       const effectiveStatus =
         routePrescriptionId && prescriptionStatus ? prescriptionStatus : "draft";
       await persistPrescription({ status: effectiveStatus });
@@ -1062,6 +1640,7 @@ export default function PrescriptionForm() {
     try {
       setIsResavingPdf(true);
       setFormStatus("");
+      persistWorkflowMemory();
       const currentDoctorName = doctor.name.trim();
       const hasMatchingAutoSignature =
         !!autoSignatureSource &&
@@ -1077,9 +1656,10 @@ export default function PrescriptionForm() {
         doctor,
         patient,
         diagnosis,
-        advice,
+        advice: buildAdviceWithFollowUp(),
         medicines,
         vitals,
+        visibleVitalFields: effectiveVisibleVitalFields,
         date: today,
         signatureDataUrl: resolvedSignature,
         clinicHours: clinicMeta.hours,
@@ -1167,7 +1747,6 @@ export default function PrescriptionForm() {
             <p className="mt-1 text-sm text-slate-600">
               Fill quickly, review instantly, approve with confidence.
             </p>
-
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <label className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#8BA4BF]/50 bg-white px-3 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:justify-start">
                 PDF Size
@@ -1183,6 +1762,7 @@ export default function PrescriptionForm() {
               <label className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#8BA4BF]/50 bg-white px-3 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:min-w-[230px]">
                 Template
                 <select
+                  ref={templateSelectRef}
                   value={selectedTemplateKey}
                   onChange={(e) => setSelectedTemplateKey(e.target.value)}
                   className="min-w-[140px] rounded-md border border-[#8BA4BF]/50 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-[#ED5B2D]"
@@ -1197,11 +1777,14 @@ export default function PrescriptionForm() {
               </label>
               <button
                 type="button"
-                onClick={applySelectedTemplate}
-                disabled={!selectedTemplateKey}
-                className="w-full rounded-xl border border-[#8BA4BF]/60 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#BFE2FE]/30 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                onClick={handleLoadTemplate}
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm font-semibold transition sm:w-auto ${
+                  selectedTemplateKey
+                    ? "border-[#ED5B2D]/30 bg-[#FFF2EC] text-[#A6401E] hover:bg-[#FFE6DA]"
+                    : "border-dashed border-[#8BA4BF]/60 bg-white text-slate-700 hover:bg-[#BFE2FE]/30"
+                }`}
               >
-                Load Template
+                {selectedTemplateKey ? "Load Template" : "Select Template First"}
               </button>
               <button
                 type="button"
@@ -1239,68 +1822,135 @@ export default function PrescriptionForm() {
 
           <div className="space-y-5 px-4 py-4 sm:px-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:py-5">
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
-              <p className={sectionTitleClassName}>Doctor</p>
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Doctor Name"
-                  value={doctor.name}
-                  onChange={(e) => updateDoctor("name", e.target.value)}
-                  className={inputClassName}
-                />
-                <input
-                  type="text"
-                  placeholder="Registration Number"
-                  value={doctor.registration}
-                  onChange={(e) => updateDoctor("registration", e.target.value)}
-                  className={inputClassName}
-                />
-
-                <div className="rounded-xl border border-dashed border-[#8BA4BF]/60 bg-[#BFE2FE]/20 p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#8BA4BF]">
-                    Signature
-                  </p>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fetchSignatureFromDoctorProfile(doctor.name)}
-                      disabled={isFetchingSignature}
-                      className="rounded-lg border border-[#8BA4BF]/60 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#BFE2FE]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isFetchingSignature ? "Fetching..." : "Auto Fetch Signature"}
-                    </button>
-                    {signatureStatus ? (
-                      <span className="text-[11px] font-medium text-slate-500">{signatureStatus}</span>
-                    ) : null}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    onChange={onSignatureChange}
-                    className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#ED5B2D] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-[#EF6A40]"
-                  />
-                  {effectiveSignatureSource ? (
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <img
-                        src={effectiveSignatureSource}
-                        alt="Signature preview"
-                        className="h-12 w-40 rounded-md border border-[#8BA4BF]/40 bg-white object-contain p-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={clearSignature}
-                        className="rounded-lg border border-[#8BA4BF]/50 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#BFE2FE]/30"
-                      >
-                        Remove
-                      </button>
-                    </div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className={`${sectionTitleClassName} mb-0`}>Doctor</p>
+                  {!isDoctorSectionExpanded ? (
+                    <p className="mt-1 text-sm text-slate-600">{doctorSummary}</p>
                   ) : null}
                 </div>
+                <div className="flex items-center gap-2">
+                  {hasValue(doctor.name) ? (
+                    <span className="rounded-full bg-[#F3FAF4] px-2.5 py-1 text-[11px] font-semibold text-[#2F7A35]">
+                      Complete
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setIsDoctorSectionExpanded((prev) => !prev)}
+                    className="rounded-lg border border-[#8BA4BF]/50 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-[#BFE2FE]/25"
+                  >
+                    {isDoctorSectionExpanded ? "Collapse" : "Change Doctor"}
+                  </button>
+                </div>
               </div>
+
+              {isDoctorSectionExpanded ? (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Doctor Name"
+                    value={doctor.name}
+                    onChange={(e) => updateDoctor("name", e.target.value)}
+                    className={inputClassName}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Registration Number"
+                    value={doctor.registration}
+                    onChange={(e) => updateDoctor("registration", e.target.value)}
+                    className={inputClassName}
+                  />
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={rememberDoctorInfo}
+                      onChange={(e) => setRememberDoctorInfo(e.target.checked)}
+                      className="h-4 w-4 rounded border-[#8BA4BF]/60 text-[#ED5B2D] focus:ring-[#BFE2FE]"
+                    />
+                    Remember my doctor info for this clinic session
+                  </label>
+
+                  <div className="rounded-xl border border-dashed border-[#8BA4BF]/60 bg-[#BFE2FE]/20 p-3">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8BA4BF]">
+                          Signature
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Reuse the last signature by default and upload only if the doctor changes.
+                        </p>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={useLastSignature}
+                          onChange={(e) => setUseLastSignature(e.target.checked)}
+                          className="h-4 w-4 rounded border-[#8BA4BF]/60 text-[#ED5B2D] focus:ring-[#BFE2FE]"
+                        />
+                        Use last signature
+                      </label>
+                    </div>
+
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fetchSignatureFromDoctorProfile(doctor.name)}
+                        disabled={isFetchingSignature}
+                        className="rounded-lg border border-[#8BA4BF]/60 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#BFE2FE]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isFetchingSignature ? "Fetching..." : "Auto Fetch Signature"}
+                      </button>
+                      {signatureStatus ? (
+                        <span className="text-[11px] font-medium text-slate-500">{signatureStatus}</span>
+                      ) : null}
+                    </div>
+
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={onSignatureChange}
+                      className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#ED5B2D] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-[#EF6A40]"
+                    />
+
+                    {effectiveSignatureSource ? (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#8BA4BF]/30 bg-white/80 p-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={effectiveSignatureSource}
+                            alt="Signature preview"
+                            className="h-12 w-40 rounded-md border border-[#8BA4BF]/40 bg-white object-contain p-1"
+                          />
+                          <div className="text-xs text-slate-600">
+                            <p className="font-semibold text-slate-700">
+                              {signatureDoctorName ? `Signature ready for Dr. ${signatureDoctorName}` : "Signature ready"}
+                            </p>
+                            <p className="mt-1">This signature will be reused until you replace it.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={clearSignature}
+                          className="rounded-lg border border-[#8BA4BF]/50 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#BFE2FE]/30"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
-              <p className={sectionTitleClassName}>Patient</p>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className={`${sectionTitleClassName} mb-0`}>Patient</p>
+                {hasValue(patient.name) ? (
+                  <span className="rounded-full bg-[#F3FAF4] px-2.5 py-1 text-[11px] font-semibold text-[#2F7A35]">
+                    Complete
+                  </span>
+                ) : null}
+              </div>
               <div className="space-y-3">
                 <input
                   type="text"
@@ -1309,7 +1959,7 @@ export default function PrescriptionForm() {
                   onChange={(e) => updatePatient("name", e.target.value)}
                   className={inputClassName}
                 />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
                   <input
                     type="text"
                     placeholder="Age"
@@ -1329,162 +1979,242 @@ export default function PrescriptionForm() {
             </div>
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
-              <p className={sectionTitleClassName}>Vitals</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <input
-                  type="text"
-                  placeholder="Blood Pressure (e.g. 120/80)"
-                  value={vitals.bloodPressure}
-                  onChange={(e) => updateVitals("bloodPressure", e.target.value)}
-                  className={inputClassName}
-                />
-                <input
-                  type="text"
-                  placeholder="Pulse (e.g. 78 bpm)"
-                  value={vitals.pulse}
-                  onChange={(e) => updateVitals("pulse", e.target.value)}
-                  className={inputClassName}
-                />
-                <input
-                  type="text"
-                  placeholder="SpO2 (e.g. 98%)"
-                  value={vitals.spo2}
-                  onChange={(e) => updateVitals("spo2", e.target.value)}
-                  className={inputClassName}
-                />
-                <input
-                  type="text"
-                  placeholder="Weight (e.g. 64 kg)"
-                  value={vitals.weight}
-                  onChange={(e) => updateVitals("weight", e.target.value)}
-                  className={inputClassName}
-                />
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className={`${sectionTitleClassName} mb-0`}>Vitals</p>
+                  <p className="mt-1 text-sm text-slate-600">Keep vitals only when they are needed for this prescription.</p>
+                </div>
+                {showVitals && hasAnyVitalValue ? (
+                  <span className="rounded-full bg-[#F3FAF4] px-2.5 py-1 text-[11px] font-semibold text-[#2F7A35]">
+                    Complete
+                  </span>
+                ) : null}
               </div>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={showVitals ? removeAllVitalFields : restoreAllVitalFields}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    showVitals
+                      ? "border border-[#F3C3B2] bg-[#FFF5F0] text-[#B74722] hover:bg-[#FFE9DE]"
+                      : "bg-[#ED5B2D] text-white hover:bg-[#EF6A40]"
+                  }`}
+                >
+                  {showVitals ? "Remove Vitals" : "Add Vitals"}
+                </button>
+              </div>
+              {showVitals ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {VITAL_FIELDS.map((field) => (
+                    <div key={field.key} className="rounded-xl border border-[#BFE2FE] bg-[#F8FBFF] p-3">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        {field.label}
+                      </p>
+                      <input
+                        type="text"
+                        placeholder={field.placeholder}
+                        value={vitals[field.key]}
+                        onChange={(e) => updateVitals(field.key, e.target.value)}
+                        className={inputClassName}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Vitals are removed from this prescription and will not appear in the PDF.</p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
-              <p className={sectionTitleClassName}>Clinic Timings</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <input
-                  type="text"
-                  placeholder="Operating Hours"
-                  value={clinicMeta.hours}
-                  onChange={(e) => updateClinicMeta("hours", e.target.value)}
-                  className={inputClassName}
-                />
-                <input
-                  type="text"
-                  placeholder="Closed Days"
-                  value={clinicMeta.closedDays}
-                  onChange={(e) => updateClinicMeta("closedDays", e.target.value)}
-                  className={inputClassName}
-                />
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className={`${sectionTitleClassName} mb-0`}>Diagnosis</p>
+                  <p className="mt-1 text-sm text-slate-600">Write the diagnosis directly with no extra suggestions.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {hasValue(diagnosis) ? (
+                    <span className="rounded-full bg-[#F3FAF4] px-2.5 py-1 text-[11px] font-semibold text-[#2F7A35]">
+                      Complete
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setDiagnosis("")}
+                    className="rounded-lg border border-[#8BA4BF]/60 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-[#BFE2FE]/30"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
-              <p className={sectionTitleClassName}>Diagnosis</p>
               <textarea
-                rows={5}
+                rows={4}
                 value={diagnosis}
                 onChange={(e) => setDiagnosis(e.target.value)}
-                placeholder="Clinical diagnosis"
-                className={`${inputClassName} min-h-[120px] resize-y leading-relaxed`}
+                placeholder="Write clinical diagnosis"
+                className={`${inputClassName} min-h-[110px] resize-y leading-relaxed`}
               />
             </div>
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
-                <p className={sectionTitleClassName}>Medicines</p>
-                <button
-                  type="button"
-                  onClick={addMedicineRow}
-                  className="rounded-lg bg-[#FF833C] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#ED5B2D]"
-                >
-                  + Add Row
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {medicines.map((medicine, index) => (
-                  <div
-                    key={index}
-                    className="rounded-xl border border-[#BFE2FE] bg-[#FCF4D9]/35 p-3"
+                <div>
+                  <p className={`${sectionTitleClassName} mb-0`}>Medicines</p>
+                  <p className="mt-1 text-sm text-slate-600">Each row stays simple, and every field can be cleared on its own.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {medicines.some((item) => hasValue(item?.medicine)) ? (
+                    <span className="rounded-full bg-[#F3FAF4] px-2.5 py-1 text-[11px] font-semibold text-[#2F7A35]">
+                      Complete
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={addMedicineRow}
+                    className="rounded-lg bg-[#FF833C] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#ED5B2D]"
                   >
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-xs font-semibold text-slate-600">Medicine {index + 1}</p>
-                      <button
-                        type="button"
-                        onClick={() => removeMedicineRow(index)}
-                        disabled={!canRemoveMedicine}
-                        className="text-xs font-semibold text-[#ED5B2D] disabled:cursor-not-allowed disabled:text-slate-300"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                    + Add Medicine
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {medicines.length ? (
+                  medicines.map((medicine, index) => (
+                    <div
+                      key={index}
+                      className={`rounded-xl border p-3 ${
+                        index % 2 === 0
+                          ? "border-[#BFE2FE] bg-[#FCF4D9]/35"
+                          : "border-[#DCE8F3] bg-[#F8FBFF]"
+                      }`}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ED5B2D] text-sm font-semibold text-white">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">Medicine {index + 1}</p>
+                            <p className="text-xs text-slate-500">Clear any subsection without affecting the rest of the row.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeMedicineRow(index)}
+                          className="rounded-lg border border-[#F3C3B2] bg-[#FFF5F0] px-3 py-1.5 text-xs font-semibold text-[#B74722] transition hover:bg-[#FFE9DE]"
+                        >
+                          Remove medicine
+                        </button>
+                      </div>
 
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <select
-                        value={medicine.type || "Tab"}
-                        onChange={(e) => updateMedicine(index, "type", e.target.value)}
-                        className={inputClassName}
-                      >
-                        {MEDICINE_TYPE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {MEDICINE_FIELD_CONFIG.map((field) => (
+                          <div
+                            key={field.key}
+                            className={`rounded-xl border border-[#BFE2FE]/80 bg-white/90 p-2.5 ${field.span}`}
+                          >
+                            <div className="mb-2 flex items-center justify-between gap-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                {field.label}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => removeMedicineField(index, field.key)}
+                                className="text-[11px] font-semibold text-slate-400 transition hover:text-[#B74722]"
+                              >
+                                Clear
+                              </button>
+                            </div>
+
+                            {field.key === "type" ? (
+                              <select
+                                value={medicine.type || ""}
+                                onChange={(e) => updateMedicine(index, "type", e.target.value)}
+                                className={inputClassName}
+                              >
+                                <option value="">Select Type</option>
+                                {MEDICINE_TYPE_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+
+                            {field.key === "medicine" ? (
+                              <input
+                                type="text"
+                                placeholder="Medicine Name"
+                                value={medicine.medicine}
+                                onChange={(e) => updateMedicine(index, "medicine", e.target.value)}
+                                list="common-medicine-options"
+                                className={inputClassName}
+                              />
+                            ) : null}
+
+                            {field.key === "dosage" ? (
+                              <input
+                                type="text"
+                                placeholder="Dosage"
+                                value={medicine.dosage}
+                                onChange={(e) => updateMedicine(index, "dosage", e.target.value)}
+                                className={inputClassName}
+                              />
+                            ) : null}
+
+                            {field.key === "frequency" ? (
+                              <input
+                                type="text"
+                                placeholder="Frequency"
+                                value={medicine.frequency}
+                                onChange={(e) => updateMedicine(index, "frequency", e.target.value)}
+                                className={inputClassName}
+                              />
+                            ) : null}
+
+                            {field.key === "duration" ? (
+                              <input
+                                type="text"
+                                placeholder="Duration"
+                                value={medicine.duration}
+                                onChange={(e) => updateMedicine(index, "duration", e.target.value)}
+                                className={inputClassName}
+                              />
+                            ) : null}
+
+                            {field.key === "mealTiming" ? (
+                              <select
+                                value={medicine.mealTiming || ""}
+                                onChange={(e) => updateMedicine(index, "mealTiming", e.target.value)}
+                                className={inputClassName}
+                              >
+                                <option value="">Select Meal Timing</option>
+                                {MEAL_TIMING_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+
+                            {field.key === "notes" ? (
+                              <textarea
+                                rows={2}
+                                placeholder="Medication remark"
+                                value={medicine.notes}
+                                onChange={(e) => updateMedicine(index, "notes", e.target.value)}
+                                className={`${inputClassName} min-h-[84px] resize-y`}
+                              />
+                            ) : null}
+                          </div>
                         ))}
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="Medicine Name"
-                        value={medicine.medicine}
-                        onChange={(e) => updateMedicine(index, "medicine", e.target.value)}
-                        list="common-medicine-options"
-                        className={inputClassName}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Dosage"
-                        value={medicine.dosage}
-                        onChange={(e) => updateMedicine(index, "dosage", e.target.value)}
-                        className={inputClassName}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Frequency"
-                        value={medicine.frequency}
-                        onChange={(e) => updateMedicine(index, "frequency", e.target.value)}
-                        className={inputClassName}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Duration"
-                        value={medicine.duration}
-                        onChange={(e) => updateMedicine(index, "duration", e.target.value)}
-                        className={inputClassName}
-                      />
-                      <select
-                        value={medicine.mealTiming || "After Food"}
-                        onChange={(e) => updateMedicine(index, "mealTiming", e.target.value)}
-                        className={inputClassName}
-                      >
-                        {MEAL_TIMING_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <textarea
-                        rows={2}
-                        placeholder="Medication remark (e.g. avoid driving, with warm water)"
-                        value={medicine.notes}
-                        onChange={(e) => updateMedicine(index, "notes", e.target.value)}
-                        className={`${inputClassName} sm:col-span-2`}
-                      />
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-[#BFE2FE] bg-[#FCF4D9]/20 p-4 text-sm text-slate-500">
+                    No medicine sections added.
                   </div>
-                ))}
+                )}
               </div>
               <datalist id="common-medicine-options">
                 {COMMON_MEDICINES.map((medicineName) => (
@@ -1494,14 +2224,34 @@ export default function PrescriptionForm() {
             </div>
 
             <div className="rounded-2xl border border-[#8BA4BF]/30 bg-white p-4 shadow-sm">
-              <p className={sectionTitleClassName}>Advice</p>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className={`${sectionTitleClassName} mb-0`}>Advice</p>
+                  <p className="mt-1 text-sm text-slate-600">A single writing area keeps advice fast and friendly for doctors.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {hasValue(advice) ? (
+                    <span className="rounded-full bg-[#F3FAF4] px-2.5 py-1 text-[11px] font-semibold text-[#2F7A35]">
+                      Complete
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setAdvice("")}
+                    className="rounded-lg border border-[#8BA4BF]/60 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-[#BFE2FE]/30"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
               <textarea
                 rows={5}
                 value={advice}
                 onChange={(e) => setAdvice(e.target.value)}
-                placeholder="Advice / follow-up instructions"
-                className={`${inputClassName} min-h-[120px] resize-y leading-relaxed`}
+                placeholder="Write advice or follow-up instructions"
+                className={`${inputClassName} min-h-[140px] resize-y leading-relaxed`}
               />
+              <p className="mt-3 text-sm text-slate-500">This advice appears directly in the prescription PDF.</p>
             </div>
           </div>
         </section>
@@ -1514,23 +2264,24 @@ export default function PrescriptionForm() {
           <header className="shrink-0 border-b border-[#8BA4BF]/20 px-4 py-4 sm:px-6">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8BA4BF]">
-                Live Preview (Template Linked)
+                Live Print Preview
               </p>
-              <p className="text-xs text-slate-500">Asset PDF with live overlay</p>
+              <p className="text-xs text-slate-500">Frontend print layout with live section updates</p>
             </div>
             <p className="mt-1 text-[11px] text-slate-500">
               Export size: {pdfPageSize === "letter" ? "US Letter (fitted)" : "A4"}
             </p>
           </header>
 
-          <div className="flex-1 p-3 sm:p-5 lg:min-h-0 lg:overflow-y-auto xl:p-8">
+          <div className="flex-1 p-2 sm:p-4 lg:min-h-0 lg:overflow-y-auto xl:p-6">
             <PrescriptionAssetLivePreview
               doctor={doctor}
               patient={patient}
-              diagnosis={debouncedDiagnosis}
-              advice={debouncedAdvice}
-              medicines={debouncedMedicines}
-              vitals={debouncedVitals}
+              diagnosis={diagnosis}
+              advice={buildAdviceWithFollowUp()}
+              medicines={medicines}
+              vitals={vitals}
+              visibleVitalFields={effectiveVisibleVitalFields}
               date={today}
               signatureDataUrl={effectiveSignatureSource}
               clinicHours={clinicMeta.hours}
@@ -1546,7 +2297,7 @@ export default function PrescriptionForm() {
             <div className="flex flex-col gap-2 border-b border-[#BFE2FE] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Approve Prescription PDF</h3>
-                <p className="text-sm text-slate-500">Template matched. Verify content and download.</p>
+                <p className="text-sm text-slate-500">Verify the live print layout and download the PDF.</p>
               </div>
               <button
                 type="button"
@@ -1557,14 +2308,15 @@ export default function PrescriptionForm() {
               </button>
             </div>
 
-            <div className="max-h-[58vh] overflow-auto bg-[#BFE2FE]/25 p-3 sm:max-h-[70vh] sm:p-4">
+            <div className="max-h-[58vh] overflow-auto bg-[#BFE2FE]/25 p-2 sm:max-h-[70vh] sm:p-4">
               <PrescriptionAssetLivePreview
                 doctor={doctor}
                 patient={patient}
-                diagnosis={debouncedDiagnosis}
-                advice={debouncedAdvice}
-                medicines={debouncedMedicines}
-                vitals={debouncedVitals}
+                diagnosis={diagnosis}
+                advice={buildAdviceWithFollowUp()}
+                medicines={medicines}
+                vitals={vitals}
+                visibleVitalFields={effectiveVisibleVitalFields}
                 date={today}
                 signatureDataUrl={effectiveSignatureSource}
                 clinicHours={clinicMeta.hours}

@@ -6,6 +6,51 @@ export function valueOrBlank(value) {
   return value && String(value).trim() ? String(value).trim() : "";
 }
 
+export const VITAL_FIELDS = [
+  {
+    key: "bloodPressure",
+    label: "Blood Pressure",
+    shortLabel: "BP",
+    placeholder: "Blood Pressure (e.g. 120/80)",
+  },
+  {
+    key: "pulse",
+    label: "Pulse",
+    shortLabel: "Pulse",
+    placeholder: "Pulse (e.g. 78 bpm)",
+  },
+  {
+    key: "spo2",
+    label: "SpO2",
+    shortLabel: "SpO2",
+    placeholder: "SpO2 (e.g. 98%)",
+  },
+  {
+    key: "weight",
+    label: "Weight",
+    shortLabel: "Weight",
+    placeholder: "Weight (e.g. 64 kg)",
+  },
+];
+
+export function hasAnyVitals(vitals) {
+  return VITAL_FIELDS.some((field) =>
+    sanitizeInlineText(vitals?.[field.key])
+  );
+}
+
+export function getVisibleVitalsRows(vitals, visibleVitalFields) {
+  const fields = Array.isArray(visibleVitalFields)
+    ? VITAL_FIELDS.filter((field) => visibleVitalFields.includes(field.key))
+    : VITAL_FIELDS;
+
+  return fields.map((field) => ({
+    key: field.key,
+    label: field.shortLabel,
+    value: sanitizeInlineText(vitals?.[field.key]) ? String(vitals?.[field.key]).trim() : "-",
+  }));
+}
+
 export function sanitizeInlineText(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -145,18 +190,28 @@ function splitClinicalParagraphs(value) {
 export function normalizeMedicineGridRows(medicines) {
   return (medicines || [])
     .map((item) => {
-      const type = sanitizeInlineText(item?.type);
-      const medicine = sanitizeInlineText(item?.medicine);
-      const mealTiming = sanitizeInlineText(item?.mealTiming);
-      const notes = [mealTiming, sanitizeInlineText(item?.notes)].filter(Boolean).join(" | ");
+      const visibleFields = Array.isArray(item?.visibleFields) ? item.visibleFields : null;
+      const isVisible = (fieldKey) => !visibleFields || visibleFields.includes(fieldKey);
+      const type = isVisible("type") ? sanitizeInlineText(item?.type) : "";
+      const medicine = isVisible("medicine") ? sanitizeInlineText(item?.medicine) : "";
+      const dosage = isVisible("dosage") ? sanitizeInlineText(item?.dosage) : "";
+      const frequency = isVisible("frequency") ? sanitizeInlineText(item?.frequency) : "";
+      const duration = isVisible("duration") ? sanitizeInlineText(item?.duration) : "";
+      const mealTiming = isVisible("mealTiming") ? sanitizeInlineText(item?.mealTiming) : "";
+      const explicitNotes = isVisible("notes") ? sanitizeInlineText(item?.notes) : "";
+      const hasMeaningfulMedicineContent =
+        !!medicine || !!dosage || !!frequency || !!duration || !!explicitNotes;
+      const notes = [hasMeaningfulMedicineContent ? mealTiming : "", explicitNotes]
+        .filter(Boolean)
+        .join(" | ");
 
       return {
-      medicine: [type, medicine].filter(Boolean).join(" "),
-      dosage: sanitizeInlineText(item?.dosage),
-      frequency: sanitizeInlineText(item?.frequency),
-      duration: sanitizeInlineText(item?.duration),
-      notes,
-    };
+        medicine: medicine ? [type, medicine].filter(Boolean).join(" ") : "",
+        dosage,
+        frequency,
+        duration,
+        notes,
+      };
     })
     .filter((item) => item.medicine || item.dosage || item.frequency || item.duration || item.notes);
 }

@@ -1,5 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import PrescriptionsModule from './modules/prescriptions/PrescriptionsModule';
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import PrescriptionsModule from "./modules/prescriptions/PrescriptionsModule";
 
 export default function App() {
   return (

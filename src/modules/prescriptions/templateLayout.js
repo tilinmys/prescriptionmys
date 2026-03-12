@@ -11,9 +11,21 @@ export const TEMPLATE_POS = {
   logoCornerMask: { x: 0, yTop: 0, width: 112, height: 48 },
   logoMask: { x: 20, yTop: 10, width: 382, height: 112 },
   logo: { x: 42, yTop: 22, width: 270, height: 79 },
-  // Calibrated against text matrix coordinates from Design - Front V1.pdf
-  clinicHeaderName: { x: 736, yTop: 30, size: 15, minSize: 11, maxWidth: 240 },
-  clinicHeaderCode: { x: 736, yTop: 50, size: 13, minSize: 10, maxWidth: 240 },
+  // Repaint the full right-side clinic contact block to avoid template text crossover.
+  clinicHeaderMask: { x: 500, yTop: 14, width: 508, height: 118 },
+  clinicHeaderBlock: {
+    x: 592,
+    yTop: 22,
+    width: 360,
+    lineGap: 21,
+    lines: [
+      { text: "MyStree #3366, 1st Floor, 13th Main Road,", size: 15.8, bold: true },
+      { text: "HAL 2nd Stage", size: 14.2 },
+      { text: "Indiranagar, Bengaluru, 560008", size: 14.2 },
+      { text: "info@mystree.org | www.my-stree.com", size: 13.7 },
+      { text: "+91 6366573772", size: 13.7 },
+    ],
+  },
   date: { x: 736, yTop: 170, size: 20, minSize: 15, maxWidth: 245 },
   patientName: { x: 286, yTop: 219, size: 22, minSize: 15, maxWidth: 470 },
   age: { x: 818, yTop: 224, size: 22, minSize: 15, maxWidth: 115 },

@@ -224,9 +224,11 @@ export default function PrescriptionPrintTemplate({
             {diagnosisParagraphs.length ? (
               <section>
                 <SectionHeading>Diagnosis</SectionHeading>
-                <div className="space-y-2 text-[15px] leading-8 sm:text-[16px]">
+                <div className="min-w-0 space-y-2 text-[15px] leading-8 sm:text-[16px]">
                   {diagnosisParagraphs.map((paragraph, index) => (
-                    <p key={`${paragraph}-${index}`}>{paragraph}</p>
+                    <p key={`${paragraph}-${index}`} className="break-words [overflow-wrap:anywhere]">
+                      {paragraph}
+                    </p>
                   ))}
                 </div>
               </section>
@@ -237,9 +239,11 @@ export default function PrescriptionPrintTemplate({
             {adviceParagraphs.length ? (
               <section>
                 <SectionHeading>Advice</SectionHeading>
-                <div className="space-y-2 text-[15px] leading-8 sm:text-[16px]">
+                <div className="min-w-0 space-y-2 text-[15px] leading-8 sm:text-[16px]">
                   {adviceParagraphs.map((paragraph, index) => (
-                    <p key={`${paragraph}-${index}`}>{paragraph}</p>
+                    <p key={`${paragraph}-${index}`} className="break-words [overflow-wrap:anywhere]">
+                      {paragraph}
+                    </p>
                   ))}
                 </div>
               </section>

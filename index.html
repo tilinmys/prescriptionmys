@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Prescription Creator</title>
+    <script>
+      (function () {
+        var redirectPath = window.sessionStorage.getItem("spa-redirect-path");
+        if (!redirectPath) return;
+        window.sessionStorage.removeItem("spa-redirect-path");
+        window.history.replaceState(null, "", redirectPath);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

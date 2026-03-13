@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
+import DocumentTypeTabs from "./DocumentTypeTabs";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -87,15 +88,27 @@ export default function PrescriptionsList() {
 
   return (
     <div className="p-6 bg-white rounded-xl shadow-sm">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold">Prescriptions</h2>
-        <button
-          type="button"
-          onClick={() => navigate("new")}
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-        >
-          Create Prescription
-        </button>
+      <div className="mb-5 space-y-4">
+        <DocumentTypeTabs pathname="/admin/prescriptions" />
+        <div className="flex flex-wrap justify-between items-center gap-3">
+          <h2 className="text-lg font-semibold">Prescriptions</h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("new")}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Create Prescription
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("nutrition/new")}
+              className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              Create Nutrition Plan
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto">

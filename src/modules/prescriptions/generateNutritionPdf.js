@@ -1,23 +1,38 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import officialLogo from "../../assets/mystreelogo-official.svg";
-import {
-  getVisibleVitalsRows,
-  normalizeMedicineGridRows,
-  sanitizeInlineText,
-  valueOrBlank,
-  wrapTextByWidth,
-} from "./prescriptionTemplateUtils";
+import { sanitizeInlineText, valueOrBlank, wrapTextByWidth } from "./prescriptionTemplateUtils";
 
 const PAGE = {
   width: 595.28,
   height: 841.89,
 };
 
-const MAX_MEDICINE_ROWS = 4;
+const NOTE_SECTIONS = [
+  { key: "medicalHistory", label: "Medical history." },
+  { key: "advanSupplements", label: "Advan Supplements." },
+  { key: "recall24Hr", label: "24-hr recall." },
+  { key: "suggestions", label: "Suggestions." },
+  { key: "goal", label: "Goal." },
+  { key: "dietPlan", label: "Diet plan." },
+];
+
+const SEGMENT_ROWS = [
+  { key: "body", label: "Body" },
+  { key: "trunk", label: "Trunk" },
+  { key: "arm", label: "Arm" },
+  { key: "leg", label: "Leg" },
+];
+
 const CLINIC_LINES = [
   "MyStree Clinic, #3366, 1st Floor, 13th Main Road",
   "HAL 2nd Stage, Indiranagar, Bengaluru, 560008",
 ];
+
+function normalizeNutritionistDisplayName(value) {
+  const trimmed = valueOrBlank(value);
+  if (!trimmed) return "";
+  return trimmed.replace(/^(dr|doctor)\.?\s+/i, "").trim();
+}
 
 function toPdfYFromTop(yTop, height, pageHeight = PAGE.height) {
   return pageHeight - yTop - height;
@@ -55,12 +70,12 @@ function drawRect(page, { x, yTop, width, height, fillColor, borderColor, border
   });
 }
 
-function drawLine(page, x1, yTop1, x2, yTop2, thickness = 0.8) {
+function drawLine(page, x1, yTop1, x2, yTop2, thickness = 0.8, color = rgb(0, 0, 0)) {
   page.drawLine({
     start: { x: x1, y: PAGE.height - yTop1 },
     end: { x: x2, y: PAGE.height - yTop2 },
     thickness,
-    color: rgb(0, 0, 0),
+    color,
   });
 }
 
@@ -80,7 +95,6 @@ function drawFittedText(page, font, text, { x, yTop, size, minSize, maxWidth, al
   const width = font.widthOfTextAtSize(resolved, fittedSize);
   const drawX =
     align === "right" ? x + Math.max(0, maxWidth - width) : align === "center" ? x + Math.max(0, (maxWidth - width) / 2) : x;
-
   drawTextTop(page, font, resolved, {
     x: drawX,
     yTop,
@@ -151,62 +165,8 @@ async function embedDataImage(pdfDoc, dataUrl) {
   return pdfDoc.embedJpg(bytes);
 }
 
-function normalizeDoctorDisplayName(value) {
-  const trimmed = valueOrBlank(value);
-  if (!trimmed) return "";
-  return /^dr\.?\s+/i.test(trimmed) ? trimmed : `Dr. ${trimmed}`;
-}
-
-function buildVitalsSummary(patient, vitalsRows) {
-  const map = Object.fromEntries(vitalsRows.map((item) => [item.key, item.value]));
-  return [
-    { label: "Age:", value: patient?.age },
-    { label: "Gender:", value: patient?.gender },
-    { label: "BP:", value: map.bloodPressure },
-    { label: "Pulse:", value: map.pulse },
-    { label: "SpO2:", value: map.spo2 },
-    { label: "Weight:", value: map.weight },
-  ];
-}
-
-function buildMedicineTableRows(medicines) {
-  return normalizeMedicineGridRows(medicines)
-    .slice(0, MAX_MEDICINE_ROWS)
-    .map((row) => ({
-      medicine: valueOrBlank(row.medicine),
-      dosage: valueOrBlank(row.dosage),
-      schedule: [valueOrBlank(row.frequency), valueOrBlank(row.duration)].filter(Boolean).join(" / "),
-    }));
-}
-
-function splitParagraphs(value) {
-  return String(value || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function buildNoteBlocks({ diagnosis, advice, medicines }) {
-  const noteBlocks = [
-    { label: "Diagnosis.", text: splitParagraphs(diagnosis).join("\n") },
-    { label: "Advice.", text: splitParagraphs(advice).join("\n") },
-    ...normalizeMedicineGridRows(medicines)
-      .slice(0, 4)
-      .map((row, index) => ({
-        label: `Medicine ${index + 1}.`,
-        text: [row.medicine, row.dosage, row.frequency, row.duration, row.notes].filter(Boolean).join(" | "),
-      })),
-  ];
-
-  while (noteBlocks.length < 6) {
-    noteBlocks.push({ label: `Notes ${noteBlocks.length - 1}.`, text: "" });
-  }
-
-  return noteBlocks.slice(0, 6);
-}
-
 function drawMetricCell(page, boldFont, regularFont, { x, yTop, width, height, label, value }) {
-  const splitAt = 122;
+  const splitAt = 150;
   drawRect(page, {
     x,
     yTop,
@@ -220,18 +180,18 @@ function drawMetricCell(page, boldFont, regularFont, { x, yTop, width, height, l
   drawTextTop(page, boldFont, label, {
     x: x + 8,
     yTop: yTop + 8,
-    size: 12.8,
+    size: 11.5,
   });
   drawFittedText(page, regularFont, valueOrBlank(value), {
     x: x + splitAt + 8,
     yTop: yTop + 8,
-    size: 12.8,
-    minSize: 9.5,
+    size: 11.5,
+    minSize: 8.5,
     maxWidth: width - splitAt - 16,
   });
 }
 
-function drawNoteBlock(page, boldFont, regularFont, { x, yTop, width, label, text }) {
+function drawNoteBlock(page, boldFont, regularFont, { x, yTop, width, label, note }) {
   drawRect(page, {
     x,
     yTop: yTop + 6,
@@ -242,32 +202,41 @@ function drawNoteBlock(page, boldFont, regularFont, { x, yTop, width, label, tex
     borderWidth: 0.9,
   });
 
+  if (note?.checked) {
+    drawRect(page, {
+      x: x + 2.5,
+      yTop: yTop + 8.5,
+      width: 7,
+      height: 7,
+      fillColor: rgb(0, 0, 0),
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0,
+    });
+  }
+
   drawTextTop(page, boldFont, label, {
     x: x + 20,
     yTop,
-    size: 14,
+    size: 12.5,
   });
 
-  const lines = valueOrBlank(text)
-    ? wrapParagraph(valueOrBlank(text), width - 8, regularFont, 11.6).slice(0, 5)
-    : [];
+  const noteText = valueOrBlank(note?.text);
+  const lines = noteText ? wrapParagraph(noteText, width - 8, regularFont, 10.2).slice(0, 5) : [];
   lines.forEach((line, index) => {
     drawTextTop(page, regularFont, line, {
-      x,
+      x: x,
       yTop: yTop + 24 + index * 12,
-      size: 11.6,
+      size: 10.2,
     });
   });
 }
 
-async function buildA4PrescriptionPdf({
+async function buildA4NutritionPdf({
   doctor,
   patient,
-  diagnosis,
-  advice,
-  medicines,
-  vitals,
-  visibleVitalFields,
+  composition,
+  segmentMetrics,
+  notes,
   date,
   signatureDataUrl,
 }) {
@@ -300,8 +269,8 @@ async function buildA4PrescriptionPdf({
   drawFittedText(page, regularFont, CLINIC_LINES[0], {
     x: 318,
     yTop: 26,
-    size: 12.4,
-    minSize: 10,
+    size: 11.6,
+    minSize: 9,
     maxWidth: 238,
     align: "right",
     color: rgb(0.153, 0.204, 0.306),
@@ -309,8 +278,8 @@ async function buildA4PrescriptionPdf({
   drawFittedText(page, regularFont, CLINIC_LINES[1], {
     x: 318,
     yTop: 42,
-    size: 12.4,
-    minSize: 10,
+    size: 11.6,
+    minSize: 9,
     maxWidth: 238,
     align: "right",
     color: rgb(0.153, 0.204, 0.306),
@@ -318,8 +287,8 @@ async function buildA4PrescriptionPdf({
   drawFittedText(page, regularFont, "info@mystree.org | www.my-stree.com", {
     x: 318,
     yTop: 61,
-    size: 11.4,
-    minSize: 9,
+    size: 10.6,
+    minSize: 8.5,
     maxWidth: 238,
     align: "right",
     color: rgb(0.929, 0.357, 0.176),
@@ -327,10 +296,17 @@ async function buildA4PrescriptionPdf({
   drawFittedText(page, boldFont, "+91 63665 73772", {
     x: 358,
     yTop: 76,
-    size: 15.4,
+    size: 13.6,
     minSize: 11,
     maxWidth: 198,
     align: "right",
+    color: rgb(0.051, 0.106, 0.212),
+  });
+
+  drawTextTop(page, boldFont, "NUTRITION SHEET", {
+    x: 238,
+    yTop: 100,
+    size: 11,
     color: rgb(0.051, 0.106, 0.212),
   });
 
@@ -338,72 +314,69 @@ async function buildA4PrescriptionPdf({
   const outerWidth = PAGE.width - outerX * 2;
   drawRect(page, {
     x: outerX,
-    yTop: 122,
+    yTop: 120,
     width: outerWidth,
     height: 56,
     fillColor: rgb(1, 1, 1),
     borderColor: rgb(0, 0, 0),
     borderWidth: 1.1,
   });
-  drawLine(page, 338, 122, 338, 150, 0.9);
-  drawLine(page, outerX, 150, outerX + outerWidth, 150, 0.9);
+  drawLine(page, 338, 120, 338, 148, 0.9);
+  drawLine(page, outerX, 148, outerX + outerWidth, 148, 0.9);
   drawTextTop(page, boldFont, "Patient Name:", {
     x: outerX + 10,
-    yTop: 130,
-    size: 13.2,
+    yTop: 128,
+    size: 11.8,
   });
   drawFittedText(page, regularFont, valueOrBlank(patient?.name), {
     x: outerX + 96,
-    yTop: 130,
-    size: 13.2,
-    minSize: 10,
+    yTop: 128,
+    size: 11.8,
+    minSize: 9,
     maxWidth: 188,
   });
   drawTextTop(page, boldFont, "Date:", {
     x: 350,
-    yTop: 130,
-    size: 13.2,
+    yTop: 128,
+    size: 11.8,
   });
   drawFittedText(page, regularFont, valueOrBlank(date), {
     x: 388,
-    yTop: 130,
-    size: 13.2,
-    minSize: 10,
+    yTop: 128,
+    size: 11.8,
+    minSize: 9,
     maxWidth: 144,
   });
-  drawTextTop(page, boldFont, "Patient Details:", {
+  drawTextTop(page, boldFont, "Patient Age:", {
     x: outerX + 10,
-    yTop: 156,
-    size: 13.2,
+    yTop: 154,
+    size: 11.8,
   });
-  drawFittedText(
-    page,
-    regularFont,
-    [valueOrBlank(patient?.age), valueOrBlank(patient?.gender)].filter(Boolean).join(" / "),
-    {
-      x: outerX + 98,
-      yTop: 156,
-      size: 13.2,
-      minSize: 10,
-      maxWidth: 190,
-    }
-  );
+  drawFittedText(page, regularFont, valueOrBlank(patient?.age), {
+    x: outerX + 90,
+    yTop: 154,
+    size: 11.8,
+    minSize: 9,
+    maxWidth: 180,
+  });
 
-  const summaryRows = buildVitalsSummary(
-    patient,
-    getVisibleVitalsRows(vitals, visibleVitalFields).filter(
-      (item) => sanitizeInlineText(item.value) && item.value !== "-"
-    )
-  );
-  const tableRows = buildMedicineTableRows(medicines);
   const leftX = 46;
-  const topY = 192;
+  const topY = 190;
   const leftWidth = 248;
   const rightX = 309;
   const rightWidth = 240;
   const rowHeight = 28;
+  const compositionRows = [
+    { label: "Ht:", value: composition?.height },
+    { label: "Wt:", value: composition?.weight },
+    { label: "Fat:", value: composition?.fat },
+    { label: "V. Fat:", value: composition?.visceralFat },
+    { label: "BMR:", value: composition?.bmr },
+    { label: "BMI:", value: composition?.bmi },
+    { label: "B. Age:", value: composition?.bodyAge },
+  ];
 
-  summaryRows.forEach((row, index) => {
+  compositionRows.forEach((row, index) => {
     drawMetricCell(page, boldFont, regularFont, {
       x: leftX,
       yTop: topY + rowHeight * index,
@@ -420,72 +393,69 @@ async function buildA4PrescriptionPdf({
     x: rightX,
     yTop: topY,
     width: rightWidth,
-    height: rightHeaderHeight + rightRowHeight * MAX_MEDICINE_ROWS,
+    height: rightHeaderHeight + rightRowHeight * SEGMENT_ROWS.length,
     fillColor: rgb(1, 1, 1),
     borderColor: rgb(0, 0, 0),
     borderWidth: 1.1,
   });
-  const col1 = 102;
-  const col2 = 54;
-  drawLine(page, rightX + col1, topY, rightX + col1, topY + rightHeaderHeight + rightRowHeight * MAX_MEDICINE_ROWS, 0.9);
-  drawLine(page, rightX + col1 + col2, topY, rightX + col1 + col2, topY + rightHeaderHeight + rightRowHeight * MAX_MEDICINE_ROWS, 0.9);
+  const col1 = 90;
+  const col2 = 66;
+  drawLine(page, rightX + col1, topY, rightX + col1, topY + rightHeaderHeight + rightRowHeight * SEGMENT_ROWS.length, 0.9);
+  drawLine(page, rightX + col1 + col2, topY, rightX + col1 + col2, topY + rightHeaderHeight + rightRowHeight * SEGMENT_ROWS.length, 0.9);
   drawLine(page, rightX, topY + rightHeaderHeight, rightX + rightWidth, topY + rightHeaderHeight, 0.9);
-  drawTextTop(page, boldFont, "Medicine", {
-    x: rightX + 16,
+  drawTextTop(page, boldFont, "Segment", {
+    x: rightX + 18,
     yTop: topY + 8,
-    size: 12.6,
+    size: 11.4,
   });
-  drawTextTop(page, boldFont, "Dose", {
-    x: rightX + col1 + 10,
+  drawTextTop(page, boldFont, "Fat %", {
+    x: rightX + col1 + 15,
     yTop: topY + 8,
-    size: 12.6,
+    size: 11.4,
   });
-  drawTextTop(page, boldFont, "Schedule", {
-    x: rightX + col1 + col2 + 8,
+  drawTextTop(page, boldFont, "Muscle %", {
+    x: rightX + col1 + col2 + 7,
     yTop: topY + 8,
-    size: 12.6,
+    size: 11.4,
   });
 
-  Array.from({ length: MAX_MEDICINE_ROWS }).forEach((_, index) => {
-    const row = tableRows[index] || { medicine: "", dosage: "", schedule: "" };
+  SEGMENT_ROWS.forEach((segment, index) => {
     const yTop = topY + rightHeaderHeight + index * rightRowHeight;
-    if (index < MAX_MEDICINE_ROWS - 1) {
+    if (index < SEGMENT_ROWS.length - 1) {
       drawLine(page, rightX, yTop + rightRowHeight, rightX + rightWidth, yTop + rightRowHeight, 0.9);
     }
-    drawFittedText(page, boldFont, row.medicine, {
-      x: rightX + 8,
+    drawTextTop(page, boldFont, segment.label, {
+      x: rightX + 18,
       yTop: yTop + 8,
       size: 11.4,
-      minSize: 9,
-      maxWidth: col1 - 16,
-      align: "center",
     });
-    drawFittedText(page, regularFont, row.dosage, {
+    drawFittedText(page, regularFont, valueOrBlank(segmentMetrics?.[segment.key]?.fat), {
       x: rightX + col1 + 8,
       yTop: yTop + 8,
       size: 11.4,
-      minSize: 9,
-      maxWidth: col2 - 16,
+      minSize: 8.5,
+      maxWidth: col2 - 14,
       align: "center",
     });
-    drawFittedText(page, regularFont, row.schedule, {
+    drawFittedText(page, regularFont, valueOrBlank(segmentMetrics?.[segment.key]?.muscle), {
       x: rightX + col1 + col2 + 8,
       yTop: yTop + 8,
       size: 11.4,
-      minSize: 9,
-      maxWidth: rightWidth - col1 - col2 - 16,
+      minSize: 8.5,
+      maxWidth: rightWidth - col1 - col2 - 14,
       align: "center",
     });
   });
 
-  const noteBlocks = buildNoteBlocks({ diagnosis, advice, medicines });
+  const leftTableHeight = rowHeight * compositionRows.length;
+  const rightTableHeight = rightHeaderHeight + rightRowHeight * SEGMENT_ROWS.length;
   const leftNoteX = 46;
   const rightNoteX = 332;
   const noteWidth = 214;
-  const noteStartY = 376;
+  const noteStartY = topY + Math.max(leftTableHeight, rightTableHeight) + 18;
   const noteGapY = 92;
 
-  noteBlocks.forEach((section, index) => {
+  NOTE_SECTIONS.forEach((section, index) => {
     const column = index % 2;
     const row = Math.floor(index / 2);
     drawNoteBlock(page, boldFont, regularFont, {
@@ -493,107 +463,151 @@ async function buildA4PrescriptionPdf({
       yTop: noteStartY + row * noteGapY,
       width: noteWidth,
       label: section.label,
-      text: section.text,
+      note: notes?.[section.key],
     });
   });
+
+  const footerX = 46;
+  const footerY = 670;
+  const footerWidth = 502;
+  const footerHeight = 136;
+  const footerBorder = rgb(0.843, 0.824, 0.784);
+  const footerDivider = rgb(0.894, 0.875, 0.839);
+  const footerMuted = rgb(0.369, 0.408, 0.506);
+  const footerSoftMuted = rgb(0.424, 0.455, 0.51);
+  const footerInk = rgb(0.051, 0.106, 0.212);
+  const rightBlockX = footerX + 300;
+  const rightBlockWidth = 178;
 
   drawRect(page, {
-    x: 46,
-    yTop: 684,
-    width: 502,
-    height: 62,
+    x: footerX,
+    yTop: footerY,
+    width: footerWidth,
+    height: footerHeight,
     fillColor: rgb(1, 1, 1),
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 1.1,
+    borderColor: footerBorder,
+    borderWidth: 1,
+  });
+  drawRect(page, {
+    x: footerX + 12,
+    yTop: footerY + 12,
+    width: footerWidth - 24,
+    height: 44,
+    fillColor: rgb(0.988, 0.984, 0.973),
+    borderColor: footerDivider,
+    borderWidth: 0.8,
+  });
+  drawTextTop(page, boldFont, "CLINICAL NOTE", {
+    x: footerX + 24,
+    yTop: footerY + 19,
+    size: 8.4,
+    color: footerMuted,
   });
   const noticeLines = wrapParagraph(
-    "NOTICE: This prescription is intended for use only as documented by the consulting doctor. Please follow dosage, duration, and advice exactly as written on this sheet.",
-    486,
+    "This nutrition sheet records body-composition details, recall, goals, diet plan, and consultation guidance. Final recommendations should always be reviewed by the treating clinician or consulting nutritionist before use.",
+    footerWidth - 52,
     regularFont,
-    10.2
-  ).slice(0, 4);
+    8.9
+  ).slice(0, 3);
   noticeLines.forEach((line, index) => {
-    drawTextTop(page, index === 0 ? boldFont : regularFont, line, {
-      x: 52,
-      yTop: 692 + index * 11,
-      size: 10.2,
+    drawTextTop(page, regularFont, line, {
+      x: footerX + 24,
+      yTop: footerY + 30 + index * 10,
+      size: 8.9,
+      color: rgb(0.122, 0.161, 0.224),
     });
   });
 
+  const doctorName = normalizeNutritionistDisplayName(doctor?.name);
+
+  drawTextTop(page, boldFont, "NUTRITIONIST SIGNATURE", {
+    x: footerX + 18,
+    yTop: footerY + 78,
+    size: 8.5,
+    color: footerMuted,
+  });
+  drawLine(page, footerX + 18, footerY + 119, footerX + 168, footerY + 119, 0.9, rgb(0.596, 0.635, 0.702));
   if (signatureDataUrl) {
     try {
       const image = await embedDataImage(pdfDoc, signatureDataUrl);
       page.drawImage(image, {
-        x: 176,
-        y: toPdfYFromTop(758, 30),
+        x: footerX + 22,
+        y: toPdfYFromTop(footerY + 90, 26),
         width: 120,
-        height: 30,
+        height: 26,
       });
     } catch {
       // Keep export resilient if signature decoding fails.
     }
   }
-
-  drawTextTop(page, regularFont, "Clinician Signature:", {
-    x: 46,
-    yTop: 764,
-    size: 13.2,
-  });
-  drawTextTop(page, regularFont, `License No: ${valueOrBlank(doctor?.registration)}`, {
-    x: 46,
-    yTop: 790,
-    size: 13.2,
+  drawTextTop(page, regularFont, "Authorized nutrition consultation sign-off.", {
+    x: footerX + 18,
+    yTop: footerY + 125,
+    size: 8,
+    color: footerSoftMuted,
   });
 
-  const doctorName = normalizeDoctorDisplayName(doctor?.name);
-  if (doctorName || valueOrBlank(doctor?.registration)) {
-    drawFittedText(page, boldFont, doctorName, {
-      x: 360,
-      yTop: 762,
-      size: 12,
-      minSize: 9.5,
-      maxWidth: 188,
+  if (doctorName) {
+    drawLine(page, footerX + 288, footerY + 78, footerX + 288, footerY + 126, 0.8, footerDivider);
+    drawFittedText(page, boldFont, "CONSULTING NUTRITIONIST", {
+      x: rightBlockX,
+      yTop: footerY + 78,
+      size: 7.6,
+      minSize: 6.9,
+      maxWidth: rightBlockWidth,
       align: "right",
+      color: footerSoftMuted,
     });
-    drawFittedText(page, regularFont, valueOrBlank(doctor?.registration), {
-      x: 360,
-      yTop: 778,
-      size: 10.5,
+    drawFittedText(page, regularFont, "MyStree Clinic", {
+      x: rightBlockX,
+      yTop: footerY + 94,
+      size: 9.2,
       minSize: 8,
-      maxWidth: 188,
+      maxWidth: rightBlockWidth,
       align: "right",
+      color: footerSoftMuted,
+    });
+    drawFittedText(page, boldFont, doctorName, {
+      x: rightBlockX,
+      yTop: footerY + 107,
+      size: 13,
+      minSize: 10,
+      maxWidth: rightBlockWidth,
+      align: "right",
+      color: footerInk,
+    });
+    drawFittedText(page, regularFont, "Nutrition & lifestyle consultation", {
+      x: rightBlockX,
+      yTop: footerY + 124,
+      size: 7.8,
+      minSize: 7.4,
+      maxWidth: rightBlockWidth,
+      align: "right",
+      color: footerSoftMuted,
     });
   }
 
   return pdfDoc.save();
 }
 
-export async function generatePrescriptionPdfFromTemplate({
+export async function generateNutritionPdfFromTemplate({
   doctor,
   patient,
-  diagnosis,
-  advice,
-  medicines,
-  vitals,
-  visibleVitalFields,
+  composition,
+  segmentMetrics,
+  notes,
   date,
   signatureDataUrl,
-  clinicHours,
-  closedDays,
   pageSize = "a4",
 }) {
-  const a4Bytes = await buildA4PrescriptionPdf({
+  const a4Bytes = await buildA4NutritionPdf({
     doctor,
     patient,
-    diagnosis,
-    advice,
-    medicines,
-    vitals,
-    visibleVitalFields,
+    composition,
+    segmentMetrics,
+    notes,
     date,
     signatureDataUrl,
-    clinicHours,
-    closedDays,
   });
 
   if (String(pageSize).toLowerCase() !== "letter") {

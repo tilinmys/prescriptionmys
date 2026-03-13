@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PrescriptionAssetLivePreview from "./PrescriptionAssetLivePreview";
 import { generatePrescriptionPdfFromTemplate } from "./generateTemplatePdf";
 import { VITAL_FIELDS } from "./prescriptionTemplateUtils";
+import DocumentTypeTabs from "./DocumentTypeTabs";
 
 function createMedicineRow() {
   return {
@@ -538,6 +539,7 @@ function useDebouncedValue(value, delayMs = 140) {
 export default function PrescriptionForm() {
   const navigate = useNavigate();
   const { id: routePrescriptionId } = useParams();
+  const location = useLocation();
   const templateSelectRef = useRef(null);
 
   const today = useMemo(
@@ -1738,6 +1740,7 @@ export default function PrescriptionForm() {
           }`}
         >
           <header className="shrink-0 border-b border-[#8BA4BF]/30 bg-[#FCF4D9]/95 px-4 py-4 backdrop-blur sm:px-6 sm:py-5">
+            <DocumentTypeTabs pathname={location.pathname} className="mb-4" />
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8BA4BF]">
               My Stree Admin Desk
             </p>

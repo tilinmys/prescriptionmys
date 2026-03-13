@@ -5,6 +5,8 @@ import {
   valueOrBlank,
 } from "./prescriptionTemplateUtils";
 
+const MAX_MEDICINE_ROWS = 4;
+
 function splitParagraphs(value) {
   return String(value || "")
     .split(/\r?\n/)
@@ -18,132 +20,84 @@ function formatDoctorDisplayName(value) {
   return /^dr\.?\s+/i.test(trimmed) ? trimmed : `Dr. ${trimmed}`;
 }
 
-function FieldLine({ label, value, widthClass = "", lineClassName = "", valueClassName = "" }) {
-  const resolvedValue = valueOrBlank(value);
+function buildVitalsSummary(patient, vitalsRows) {
+  const map = Object.fromEntries(vitalsRows.map((item) => [item.key, item.value]));
+  return [
+    { label: "Age:", value: patient?.age },
+    { label: "Gender:", value: patient?.gender },
+    { label: "BP:", value: map.bloodPressure },
+    { label: "Pulse:", value: map.pulse },
+    { label: "SpO2:", value: map.spo2 },
+    { label: "Weight:", value: map.weight },
+  ];
+}
 
+function buildMedicineTableRows(medicines) {
+  return normalizeMedicineGridRows(medicines)
+    .slice(0, MAX_MEDICINE_ROWS)
+    .map((row) => ({
+      medicine: valueOrBlank(row.medicine),
+      dosage: valueOrBlank(row.dosage),
+      schedule: [valueOrBlank(row.frequency), valueOrBlank(row.duration)].filter(Boolean).join(" / "),
+    }));
+}
+
+function buildMedicineNoteBlocks(medicines) {
+  return normalizeMedicineGridRows(medicines)
+    .slice(0, 4)
+    .map((row, index) => {
+      const pieces = [row.medicine, row.dosage, row.frequency, row.duration, row.notes].filter(Boolean);
+      return {
+        label: `Medicine ${index + 1}.`,
+        text: pieces.join(" | "),
+      };
+    });
+}
+
+function MetricCell({ label, value, hasBottomBorder = true }) {
   return (
-    <div className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 ${widthClass}`}>
-      <span className="whitespace-nowrap text-[14px] font-semibold leading-none text-[#27344e] sm:text-[15px]">
+    <div
+      className={`grid grid-cols-[170px_minmax(0,1fr)] ${hasBottomBorder ? "border-b border-black" : ""}`}
+    >
+      <div className="border-r border-black px-4 py-3 text-[15px] font-semibold leading-6 text-black">
         {label}
-      </span>
-      <div
-        className={`min-w-0 border-b border-dotted border-[#98A3B3] pb-1 text-[14px] font-medium text-[#1F2A40] sm:text-[15px] ${lineClassName}`}
-        title={resolvedValue || undefined}
-      >
-        <span className={`block truncate leading-none ${valueClassName}`}>{resolvedValue}</span>
+      </div>
+      <div className="px-4 py-3 text-[15px] leading-6 text-black">{valueOrBlank(value)}</div>
+    </div>
+  );
+}
+
+function NoteBlock({ label, text }) {
+  return (
+    <div className="min-h-[138px]">
+      <div className="flex items-start gap-3">
+        <div className="mt-1 h-5 w-5 border border-black bg-white" />
+        <p className="text-[20px] font-semibold leading-8 text-black">{label}</p>
+      </div>
+      <div className="mt-2 min-h-[72px] pl-8 text-[14px] leading-6 tracking-[0.01em] text-black whitespace-pre-wrap [overflow-wrap:anywhere]">
+        {valueOrBlank(text)}
       </div>
     </div>
   );
 }
 
-function SectionHeading({ children }) {
+function ClinicHeader() {
   return (
-    <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.32em] text-[#5E6E86] sm:text-[12px]">
-      {children}
-    </div>
-  );
-}
-
-const MEDICINE_COLUMN_CONFIG = [
-  { key: "medicine", label: "Medicine", ratio: 1.9 },
-  { key: "dosage", label: "Dosage", ratio: 0.78 },
-  { key: "frequency", label: "Frequency", ratio: 0.92 },
-  { key: "duration", label: "Duration", ratio: 0.8 },
-  { key: "notes", label: "Remarks", ratio: 1.25 },
-];
-
-function getVisibleMedicineColumns(rows) {
-  return MEDICINE_COLUMN_CONFIG.filter((column) =>
-    rows.some((row) => String(row?.[column.key] || "").trim())
-  );
-}
-
-function VitalsPanel({ rows }) {
-  if (!rows.length) return null;
-
-  return (
-    <aside className="w-full max-w-[112px]">
-      <div className="mb-1 text-[6.5px] font-semibold uppercase tracking-[0.22em] text-[#5E6E86]">
-        Vitals
+    <header className="grid grid-cols-[minmax(0,1.08fr)_minmax(290px,0.92fr)] items-start gap-8">
+      <div className="flex items-start">
+        <img
+          src={mystreeLogo}
+          alt="My Stree Logo"
+          className="h-auto w-[350px] max-w-full object-contain"
+        />
       </div>
-      <div className="overflow-hidden rounded-[10px] border border-[#D6DEE8] bg-white/92 shadow-[0_4px_10px_rgba(15,23,42,0.04)]">
-        <div className="divide-y divide-[#E6EBF1]">
-          {rows.map((item) => (
-            <div
-              key={item.key}
-              className="grid grid-cols-[30px_minmax(0,1fr)] items-center gap-1.5 bg-[#F8FAFC] px-2 py-1.5"
-            >
-              <p className="text-[5.8px] font-semibold uppercase tracking-[0.14em] text-[#7B8AA3]">
-                {item.label}
-              </p>
-              <p className="break-words text-right text-[7.5px] font-semibold text-[#1D2940]">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </div>
+      <div className="justify-self-end text-right text-[16px] leading-[1.7] text-[#27344E]">
+        <p>MyStree Clinic, #3366, 1st Floor, 13th Main Road</p>
+        <p>HAL 2nd Stage, Indiranagar, Bengaluru, 560008</p>
+        <p className="mt-2 text-[#ED5B2D]">info@mystree.org | www.my-stree.com</p>
+        <p className="mt-1 text-[22px] font-bold text-[#0D1B36]">+91 63665 73772</p>
       </div>
-    </aside>
-  );
-}
-
-function MedicineTable({ rows }) {
-  if (!rows.length) return null;
-  const columns = getVisibleMedicineColumns(rows);
-  if (!columns.length) return null;
-  const totalRatio = columns.reduce((sum, column) => {
-    const matched = MEDICINE_COLUMN_CONFIG.find((item) => item.key === column.key);
-    return sum + (matched?.ratio || 1);
-  }, 0);
-
-  return (
-    <section>
-      <SectionHeading>Medicines</SectionHeading>
-      <div className="w-full overflow-hidden rounded-[20px] border border-[#D6DEE8] bg-white/94 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-        <table className="w-full table-fixed border-collapse">
-          <colgroup>
-            {columns.map((column) => {
-              const matched = MEDICINE_COLUMN_CONFIG.find((item) => item.key === column.key);
-              const widthPercent = ((matched?.ratio || 1) / totalRatio) * 100;
-              return <col key={column.key} style={{ width: `${widthPercent}%` }} />;
-            })}
-          </colgroup>
-          <thead className="border-b border-[#DDE5EE] bg-[#F5F8FC]">
-            <tr>
-              {columns.map((column) => (
-                <th
-                  key={column.key}
-                  className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6B7A92]"
-                >
-                  <span className="block truncate">{column.label}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#E7EDF4]">
-            {rows.map((item, index) => (
-              <tr key={`${item.medicine}-${index}`} className="align-middle">
-                {columns.map((column) => {
-                  const value = String(item?.[column.key] || "").trim();
-                  const isMedicineColumn = column.key === "medicine";
-                  const displayValue = isMedicineColumn && value ? `${index + 1}. ${value}` : value;
-
-                  return (
-                    <td
-                      key={`${column.key}-${index}`}
-                      className={`px-4 py-3 text-[14px] leading-6 text-[#24324B] ${isMedicineColumn ? "font-semibold text-[#18243A]" : ""}`}
-                      title={displayValue || undefined}
-                    >
-                      <span className="block truncate">{displayValue}</span>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    </header>
   );
 }
 
@@ -156,138 +110,133 @@ export default function PrescriptionPrintTemplate({
   vitals,
   visibleVitalFields,
   date,
+  signatureDataUrl,
   rootId = "print-area",
 }) {
   const vitalsRows = getVisibleVitalsRows(vitals, visibleVitalFields).filter(
     (item) => String(item.value || "").trim() && item.value !== "-"
   );
-  const medicineRows = normalizeMedicineGridRows(medicines);
-  const diagnosisParagraphs = splitParagraphs(diagnosis);
-  const adviceParagraphs = splitParagraphs(advice);
-  const hasMainTextContent = diagnosisParagraphs.length || medicineRows.length || adviceParagraphs.length;
-  const hasBodyContent = hasMainTextContent || vitalsRows.length;
-  const hasVitalsPanel = vitalsRows.length > 0;
+  const summaryRows = buildVitalsSummary(patient, vitalsRows);
+  const medicineTableRows = buildMedicineTableRows(medicines);
+  const noteBlocks = [
+    { label: "Diagnosis.", text: splitParagraphs(diagnosis).join("\n") },
+    { label: "Advice.", text: splitParagraphs(advice).join("\n") },
+    ...buildMedicineNoteBlocks(medicines),
+  ];
+
+  while (noteBlocks.length < 6) {
+    noteBlocks.push({ label: `Notes ${noteBlocks.length - 1}.`, text: "" });
+  }
+
   const doctorName = formatDoctorDisplayName(doctor?.name);
   const doctorRegistration = valueOrBlank(doctor?.registration);
 
   return (
     <div
       id={rootId}
-      className="mx-auto flex min-h-[1220px] w-[860px] max-w-none flex-col rounded-[18px] bg-[#F7F7F6] px-10 pb-8 pt-8 text-[#27344E]"
+      className="mx-auto flex min-h-[1220px] w-[860px] max-w-none flex-col bg-[#F7F7F6] px-10 pb-10 pt-8 text-black"
       style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
     >
-      <header className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.14fr)_minmax(360px,0.86fr)] lg:items-start lg:gap-10">
-        <div className="flex items-start">
-          <img
-            src={mystreeLogo}
-            alt="My Stree Logo"
-            className="h-auto w-[360px] max-w-full object-contain sm:w-[430px] xl:w-[470px]"
-          />
-        </div>
+      <ClinicHeader />
 
-        <div className="justify-self-end text-right text-[15px] leading-[1.75] text-[#27344E] sm:max-w-[440px] sm:text-[16px]">
-          <p>MyStree Clinic, #3366, 1st Floor, 13th Main Road</p>
-          <p>HAL 2nd Stage, Indiranagar, Bengaluru, 560008</p>
-          <p className="mt-3 text-[#ED5B2D]">info@mystree.org | www.my-stree.com</p>
-          <p className="mt-2 text-[20px] font-bold text-[#0D1B36]">+91 63665 73772</p>
-        </div>
-      </header>
-
-      <section className="mt-10 space-y-5 sm:mt-12">
-        <div className="grid grid-cols-[96px_minmax(0,1fr)] items-end gap-5 sm:grid-cols-[118px_minmax(0,1fr)] sm:gap-8">
-          <div className="text-[70px] font-serif font-bold leading-none text-[#253249] sm:text-[82px]">
-            &#8478;
+      <section className="mt-5 border-[1.5px] border-black bg-white">
+        <div className="grid grid-cols-[minmax(0,1fr)_255px] items-start border-b border-black">
+          <div className="px-4 py-3 text-[17px] font-semibold leading-8 text-black">
+            Patient Name: <span className="font-normal">{valueOrBlank(patient?.name)}</span>
           </div>
-          <div className="justify-self-center w-full max-w-[420px]">
-            <FieldLine label="Date :" value={date} lineClassName="font-semibold" />
+          <div className="border-l border-black px-4 py-3 text-[17px] font-semibold leading-8 text-black">
+            Date: <span className="font-normal">{valueOrBlank(date)}</span>
           </div>
         </div>
-
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_112px] md:items-end md:gap-8">
-            <FieldLine label="Patient's name:" value={patient?.name} />
-            <div className="justify-self-center w-full max-w-[96px]">
-              <FieldLine label="Age:" value={patient?.age} />
-            </div>
-          </div>
-          {hasVitalsPanel ? (
-            <div className="flex justify-end">
-              <VitalsPanel rows={vitalsRows} />
-            </div>
-          ) : null}
+        <div className="px-4 py-3 text-[17px] font-semibold leading-8 text-black">
+          Patient Details:{" "}
+          <span className="font-normal">
+            {[valueOrBlank(patient?.age), valueOrBlank(patient?.gender)].filter(Boolean).join(" / ")}
+          </span>
         </div>
       </section>
 
-      <main className="mt-6 flex-1 sm:mt-8">
-        {hasBodyContent ? (
-          <div className="min-h-[560px] min-w-0 space-y-10">
-            {diagnosisParagraphs.length ? (
-              <section>
-                <SectionHeading>Diagnosis</SectionHeading>
-                <div className="min-w-0 space-y-2 text-[15px] leading-8 sm:text-[16px]">
-                  {diagnosisParagraphs.map((paragraph, index) => (
-                    <p key={`${paragraph}-${index}`} className="break-words [overflow-wrap:anywhere]">
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              </section>
-            ) : null}
+      <section className="mt-4 grid grid-cols-[1fr_1.03fr] gap-4">
+        <div className="border-[1.5px] border-black bg-white">
+          {summaryRows.map((row, index) => (
+            <MetricCell
+              key={row.label}
+              label={row.label}
+              value={row.value}
+              hasBottomBorder={index < summaryRows.length - 1}
+            />
+          ))}
+        </div>
 
-            <MedicineTable rows={medicineRows} />
-
-            {adviceParagraphs.length ? (
-              <section>
-                <SectionHeading>Advice</SectionHeading>
-                <div className="min-w-0 space-y-2 text-[15px] leading-8 sm:text-[16px]">
-                  {adviceParagraphs.map((paragraph, index) => (
-                    <p key={`${paragraph}-${index}`} className="break-words [overflow-wrap:anywhere]">
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            {!hasMainTextContent ? <div className="min-h-[520px]" /> : null}
-          </div>
-        ) : (
-          <div className="min-h-[700px]" />
-        )}
-      </main>
-
-      <footer className="mt-auto pt-10">
-        {(doctorName || doctorRegistration) ? (
-          <div className="mb-8 flex justify-end">
-            <div className="min-w-[220px] max-w-[280px] text-right">
-              <div className="border-b border-dotted border-[#98A3B3] pb-3">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#7B8AA3]">
-                  Consulting Doctor
-                </p>
-                {doctorName ? (
-                  <p className="mt-2 text-[16px] font-semibold text-[#1D2940]">
-                    {doctorName}
-                  </p>
-                ) : null}
-                {doctorRegistration ? (
-                  <p className="mt-1 text-[10px] font-medium text-[#5E6E86]">
-                    Reg. No. {doctorRegistration}
-                  </p>
-                ) : null}
-              </div>
+        <div className="border-[1.5px] border-black bg-white">
+          <div className="grid grid-cols-[1.3fr_0.75fr_1fr] border-b border-black">
+            <div className="border-r border-black px-3 py-3 text-center text-[15px] font-semibold leading-6 text-black">
+              Medicine
+            </div>
+            <div className="border-r border-black px-3 py-3 text-center text-[15px] font-semibold leading-6 text-black">
+              Dose
+            </div>
+            <div className="px-3 py-3 text-center text-[15px] font-semibold leading-6 text-black">
+              Schedule
             </div>
           </div>
-        ) : null}
-        <div className="h-[2px] w-full bg-[#ED5B2D]" />
-        <div className="mx-auto max-w-4xl pt-6 text-center text-[10px] leading-5 text-[#9AA3B1] sm:text-[11px] sm:leading-6">
-          <p>
-            Do not self-medicate. This medication is intended for use only as prescribed by your
-            healthcare provider.
-          </p>
-          <p>
-            Always consult your doctor before taking any medication, including this one, to ensure
-            it is appropriate for your individual needs.
-          </p>
+          {Array.from({ length: MAX_MEDICINE_ROWS }).map((_, index) => {
+            const row = medicineTableRows[index] || { medicine: "", dosage: "", schedule: "" };
+            return (
+              <div
+                key={`med-table-${index}`}
+                className={`grid grid-cols-[1.3fr_0.75fr_1fr] ${index < MAX_MEDICINE_ROWS - 1 ? "border-b border-black" : ""}`}
+              >
+                <div className="border-r border-black px-3 py-3 text-center text-[15px] font-semibold leading-6 text-black">
+                  {row.medicine}
+                </div>
+                <div className="border-r border-black px-3 py-3 text-center text-[15px] leading-6 text-black">
+                  {row.dosage}
+                </div>
+                <div className="px-3 py-3 text-center text-[15px] leading-6 text-black">
+                  {row.schedule}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mt-6 grid flex-1 grid-cols-2 gap-x-10 gap-y-8">
+        {noteBlocks.slice(0, 6).map((section) => (
+          <NoteBlock key={section.label} label={section.label} text={section.text} />
+        ))}
+      </section>
+
+      <footer className="mt-6">
+        <div className="border-[1.5px] border-black bg-white px-4 py-3 text-[13px] leading-6 text-black">
+          <span className="font-semibold">NOTICE:</span> This prescription is intended for use only
+          as documented by the consulting doctor. Please follow dosage, duration, and advice exactly
+          as written on this sheet.
+        </div>
+
+        <div className="mt-8 flex items-end justify-between gap-8">
+          <div className="text-[16px] leading-8 text-black">
+            <p>
+              Clinician Signature:{" "}
+              {signatureDataUrl ? (
+                <img
+                  src={signatureDataUrl}
+                  alt="Clinician signature"
+                  className="inline-block h-10 max-w-[160px] align-middle object-contain"
+                />
+              ) : null}
+            </p>
+            <p>
+              License No: <span className="font-medium">{doctorRegistration}</span>
+            </p>
+          </div>
+          {(doctorName || doctorRegistration) ? (
+            <div className="text-right text-[14px] leading-7 text-black">
+              {doctorName ? <p className="font-semibold text-[16px]">{doctorName}</p> : null}
+              {doctorRegistration ? <p>{doctorRegistration}</p> : null}
+            </div>
+          ) : null}
         </div>
       </footer>
     </div>
